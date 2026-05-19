@@ -40,6 +40,7 @@ const el = {
   appShell: document.getElementById('appShell'),
   btnOpenAudio: document.getElementById('btnOpenAudio'),
   btnExportCsv: document.getElementById('btnExportCsv'),
+  btnExportXlsx: document.getElementById('btnExportXlsx'),
   btnModalUpload: document.getElementById('btnModalUpload'),
   fileInput: document.getElementById('fileInput'),
   welcomeModal: document.getElementById('welcomeModal'),
@@ -87,6 +88,7 @@ const el = {
   btnClearMatches: document.getElementById('btnClearMatches'),
   matchSummary: document.getElementById('matchSummary'),
   matchesTable: document.getElementById('matchesTable'),
+  accordionPanels: Array.from(document.querySelectorAll('.accordion-panel')),
 };
 
 function setStatus(badge, hint) {
@@ -136,6 +138,54 @@ function closeWelcome() {
   el.welcomeModal.classList.remove('active');
 }
 
+
+function panelByName(name) {
+  return el.accordionPanels.find(panel => panel.dataset.panel === name);
+}
+
+function setPanelOpen(name, open) {
+  const panel = panelByName(name);
+  if (!panel) return;
+  panel.classList.toggle('is-open', open);
+  panel.classList.toggle('is-collapsed', !open);
+  const head = panel.querySelector('.accordion-head');
+  const icon = panel.querySelector('.accordion-icon');
+  if (head) head.setAttribute('aria-expanded', open ? 'true' : 'false');
+  if (icon) icon.textContent = open ? '▴' : '▾';
+}
+
+function togglePanel(name) {
+  const panel = panelByName(name);
+  if (!panel) return;
+  setPanelOpen(name, !panel.classList.contains('is-open'));
+}
+
+function resetPanelsForInitialState() {
+  setPanelOpen('guide', true);
+  setPanelOpen('spectrogram-config', false);
+  setPanelOpen('roi', false);
+  setPanelOpen('search', false);
+  setPanelOpen('results', false);
+}
+
+function openRoiStep() {
+  setPanelOpen('guide', true);
+  setPanelOpen('roi', true);
+  setPanelOpen('search', false);
+  setPanelOpen('results', false);
+}
+
+function openSearchStep() {
+  setPanelOpen('roi', false);
+  setPanelOpen('search', true);
+  setPanelOpen('results', false);
+}
+
+function openResultsStep() {
+  setPanelOpen('search', false);
+  setPanelOpen('results', true);
+}
+
 function escapeHtml(value) {
   return String(value ?? '').replace(/[&<>'"]/g, ch => ({
     '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;'
@@ -175,7 +225,9 @@ function resetForNewAudio() {
   el.btnSearch.disabled = true;
   el.btnClearMatches.disabled = true;
   el.btnExportCsv.disabled = true;
+  if (el.btnExportXlsx) el.btnExportXlsx.disabled = true;
   clearMatchesTable();
+  resetPanelsForInitialState();
   drawOverlay();
 }
 
@@ -226,6 +278,7 @@ function onWorkerMessage(ev) {
     setCoach('Marca una plantilla', 'Dale play si quieres ubicar el sonido. Luego arrastra una caja roja sobre la región acústica que deseas usar como plantilla.');
     showToast('Espectrograma listo', 'Ahora arrastra una caja sobre el patrón acústico de interés.');
     enableAfterSpectrogram();
+    openRoiStep();
     return;
   }
 
@@ -257,12 +310,14 @@ function onWorkerMessage(ev) {
     renderMatchesTable();
     el.btnClearMatches.disabled = state.matches.length === 0;
     el.btnExportCsv.disabled = state.matches.length === 0;
+    if (el.btnExportXlsx) el.btnExportXlsx.disabled = state.matches.length === 0;
     el.matchSummary.textContent = state.matches.length
       ? `${state.matches.length} matches encontrados. Mejor score: ${state.matches[0].score.toFixed(3)}.`
       : 'No hubo matches con ese umbral.';
     setStatus('Revisa resultados', state.matches.length ? 'Las cajas azules son candidatos similares a la plantilla.' : 'Baja el score o cambia el ROI si no aparecen matches.');
     setCoach('Revisa los candidatos', state.matches.length ? 'Haz clic en una fila de la tabla para centrar el audio y el espectrograma en ese match.' : 'No aparecieron candidatos. Prueba bajar el score mínimo o marca una ROI más ajustada.');
     showToast('Búsqueda terminada', state.matches.length ? `Encontré ${state.matches.length} candidatos.` : 'No encontré candidatos con ese umbral.');
+    openResultsStep();
     return;
   }
 
@@ -378,32 +433,59 @@ function renderSpectrogramImage(buffer, width, height) {
   el.emptyViewer.hidden = true;
   el.spectrogramStage.hidden = false;
   el.spectrogramViewport.classList.remove('empty');
-  el.spectrogramStage.style.width = `${CONFIG.freqAxisW + width}px`;
-  el.spectrogramStage.style.height = `${height + CONFIG.timeAxisH}px`;
-  el.canvasLayer.style.width = `${width}px`;
-  el.canvasLayer.style.height = `${height}px`;
+
   for (const c of [el.spectrogramCanvas, el.overlayCanvas]) {
     c.width = width;
     c.height = height;
-    c.style.width = `${width}px`;
-    c.style.height = `${height}px`;
   }
+
   el.freqAxisCanvas.width = CONFIG.freqAxisW;
   el.freqAxisCanvas.height = height;
-  el.freqAxisCanvas.style.width = `${CONFIG.freqAxisW}px`;
-  el.freqAxisCanvas.style.height = `${height}px`;
   el.timeAxisCanvas.width = width;
   el.timeAxisCanvas.height = CONFIG.timeAxisH;
-  el.timeAxisCanvas.style.width = `${width}px`;
-  el.timeAxisCanvas.style.height = `${CONFIG.timeAxisH}px`;
-  el.timeAxisCanvas.style.top = `${height}px`;
-  el.playhead.style.height = `${height}px`;
+
   const ctx = el.spectrogramCanvas.getContext('2d');
   const imageData = new ImageData(new Uint8ClampedArray(buffer), width, height);
   ctx.putImageData(imageData, 0, 0);
+
+  layoutSpectrogramStage();
   drawAxes();
   drawOverlay();
   updatePlayhead(true);
+}
+
+function layoutSpectrogramStage() {
+  if (!state.display) return;
+  const width = state.display.width;
+  const naturalHeight = state.display.height;
+
+  // El visor solo debe tener scroll horizontal. Si el alto natural no cabe,
+  // se escala visualmente el canvas para reservar siempre el eje temporal.
+  const viewportH = Math.max(260, el.spectrogramViewport.clientHeight || naturalHeight + CONFIG.timeAxisH);
+  const availableForSpec = Math.max(220, viewportH - CONFIG.timeAxisH - 18);
+  const visualHeight = Math.min(naturalHeight, availableForSpec);
+
+  state.visualHeight = visualHeight;
+
+  el.spectrogramStage.style.width = `${CONFIG.freqAxisW + width}px`;
+  el.spectrogramStage.style.height = `${visualHeight + CONFIG.timeAxisH}px`;
+
+  el.canvasLayer.style.width = `${width}px`;
+  el.canvasLayer.style.height = `${visualHeight}px`;
+
+  for (const c of [el.spectrogramCanvas, el.overlayCanvas]) {
+    c.style.width = `${width}px`;
+    c.style.height = `${visualHeight}px`;
+  }
+
+  el.freqAxisCanvas.style.width = `${CONFIG.freqAxisW}px`;
+  el.freqAxisCanvas.style.height = `${visualHeight}px`;
+
+  el.timeAxisCanvas.style.width = `${width}px`;
+  el.timeAxisCanvas.style.height = `${CONFIG.timeAxisH}px`;
+  el.timeAxisCanvas.style.top = `${visualHeight}px`;
+
+  el.playhead.style.height = `${visualHeight}px`;
 }
 
 function timeToX(t) {
@@ -747,6 +829,124 @@ function exportCsv() {
   showToast('CSV exportado', 'Se descargó la tabla de candidatos.');
 }
 
+
+function exportXlsx() {
+  if (!state.matches.length) return;
+  const header = ['audio','tmin','tmax','fmin','fmax','score','estado'];
+  const rows = state.matches.map(m => [
+    state.file?.name || '',
+    Number(m.tmin.toFixed(6)), Number(m.tmax.toFixed(6)), Number(m.fmin.toFixed(3)), Number(m.fmax.toFixed(3)), Number(m.score.toFixed(6)), 'candidato'
+  ]);
+  const blob = makeXlsxBlob([header, ...rows]);
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `embedding_matches_${Date.now()}.xlsx`;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(url);
+  showToast('XLSX exportado', 'Se descargó la tabla de candidatos.');
+}
+
+function xmlEscape(value) {
+  return String(value ?? '').replace(/[&<>'"]/g, ch => ({
+    '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&apos;', '"': '&quot;'
+  }[ch]));
+}
+
+function colName(n) {
+  let s = '';
+  while (n > 0) {
+    const m = (n - 1) % 26;
+    s = String.fromCharCode(65 + m) + s;
+    n = Math.floor((n - 1) / 26);
+  }
+  return s;
+}
+
+function makeSheetXml(rows) {
+  const sheetRows = rows.map((row, rIdx) => {
+    const rn = rIdx + 1;
+    const cells = row.map((value, cIdx) => {
+      const ref = `${colName(cIdx + 1)}${rn}`;
+      if (typeof value === 'number' && Number.isFinite(value)) {
+        return `<c r="${ref}"><v>${value}</v></c>`;
+      }
+      return `<c r="${ref}" t="inlineStr"><is><t>${xmlEscape(value)}</t></is></c>`;
+    }).join('');
+    return `<row r="${rn}">${cells}</row>`;
+  }).join('');
+  return `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><sheetData>${sheetRows}</sheetData></worksheet>`;
+}
+
+function makeXlsxBlob(rows) {
+  const files = [
+    ['[Content_Types].xml', `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/><Override PartName="/xl/worksheets/sheet1.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/></Types>`],
+    ['_rels/.rels', `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="xl/workbook.xml"/></Relationships>`],
+    ['xl/workbook.xml', `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><sheets><sheet name="matches" sheetId="1" r:id="rId1"/></sheets></workbook>`],
+    ['xl/_rels/workbook.xml.rels', `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet1.xml"/></Relationships>`],
+    ['xl/worksheets/sheet1.xml', makeSheetXml(rows)],
+  ];
+  return zipStore(files, 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+}
+
+const CRC_TABLE = (() => {
+  const table = new Uint32Array(256);
+  for (let n = 0; n < 256; n++) {
+    let c = n;
+    for (let k = 0; k < 8; k++) c = (c & 1) ? (0xEDB88320 ^ (c >>> 1)) : (c >>> 1);
+    table[n] = c >>> 0;
+  }
+  return table;
+})();
+
+function crc32(bytes) {
+  let c = 0xffffffff;
+  for (let i = 0; i < bytes.length; i++) c = CRC_TABLE[(c ^ bytes[i]) & 0xff] ^ (c >>> 8);
+  return (c ^ 0xffffffff) >>> 0;
+}
+
+function u16(n) { return [n & 255, (n >>> 8) & 255]; }
+function u32(n) { return [n & 255, (n >>> 8) & 255, (n >>> 16) & 255, (n >>> 24) & 255]; }
+
+function zipStore(fileEntries, mime) {
+  const enc = new TextEncoder();
+  const chunks = [];
+  const central = [];
+  let offset = 0;
+  for (const [name, text] of fileEntries) {
+    const nameBytes = enc.encode(name);
+    const data = enc.encode(text);
+    const crc = crc32(data);
+    const local = new Uint8Array([
+      ...u32(0x04034b50), ...u16(20), ...u16(0), ...u16(0), ...u16(0), ...u16(0),
+      ...u32(crc), ...u32(data.length), ...u32(data.length), ...u16(nameBytes.length), ...u16(0)
+    ]);
+    chunks.push(local, nameBytes, data);
+    const cent = new Uint8Array([
+      ...u32(0x02014b50), ...u16(20), ...u16(20), ...u16(0), ...u16(0), ...u16(0), ...u16(0),
+      ...u32(crc), ...u32(data.length), ...u32(data.length), ...u16(nameBytes.length), ...u16(0), ...u16(0),
+      ...u16(0), ...u16(0), ...u32(0), ...u32(offset)
+    ]);
+    central.push(cent, nameBytes);
+    offset += local.length + nameBytes.length + data.length;
+  }
+  const centralOffset = offset;
+  let centralSize = 0;
+  for (const c of central) centralSize += c.length;
+  const end = new Uint8Array([
+    ...u32(0x06054b50), ...u16(0), ...u16(0), ...u16(fileEntries.length), ...u16(fileEntries.length),
+    ...u32(centralSize), ...u32(centralOffset), ...u16(0)
+  ]);
+  return new Blob([...chunks, ...central, end], { type: mime });
+}
+
 function csvCell(value) {
   const s = String(value ?? '');
   if (/[",\n]/.test(s)) return `"${s.replace(/"/g, '""')}"`;
@@ -777,6 +977,7 @@ function saveRoi() {
   setStatus('Plantilla guardada', 'Ajusta los parámetros y pulsa Buscar similares.');
   setCoach('Busca sonidos similares', 'Usa coseno como punto de partida. Si salen pocos candidatos, baja el score mínimo; si salen demasiados, súbelo.');
   showToast('Plantilla guardada', 'Ahora puedes buscar regiones similares por embedding.');
+  openSearchStep();
 }
 
 function clearRoi() {
@@ -794,10 +995,12 @@ function clearRoi() {
   el.btnSearch.disabled = true;
   el.btnClearMatches.disabled = true;
   el.btnExportCsv.disabled = true;
+  if (el.btnExportXlsx) el.btnExportXlsx.disabled = true;
   clearMatchesTable();
   drawOverlay();
   setStatus('Marca plantilla', 'Arrastra sobre el espectrograma para encerrar el patrón que quieres buscar.');
   setCoach('Marca una plantilla', 'Dibuja una caja roja sobre el sonido que quieres encontrar en el resto del audio.');
+  openRoiStep();
 }
 
 function searchEmbedding() {
@@ -822,6 +1025,7 @@ function clearMatches() {
   el.matchSummary.textContent = 'Sin matches.';
   el.btnClearMatches.disabled = true;
   el.btnExportCsv.disabled = true;
+  if (el.btnExportXlsx) el.btnExportXlsx.disabled = true;
   clearMatchesTable();
   drawOverlay();
   showToast('Matches limpiados', 'Se retiraron las cajas azules.');
@@ -899,6 +1103,12 @@ function attachEvents() {
   el.btnSearch.addEventListener('click', searchEmbedding);
   el.btnClearMatches.addEventListener('click', clearMatches);
   el.btnExportCsv.addEventListener('click', exportCsv);
+  if (el.btnExportXlsx) el.btnExportXlsx.addEventListener('click', exportXlsx);
+  el.accordionPanels.forEach(panel => {
+    const head = panel.querySelector('.accordion-head');
+    if (head) head.addEventListener('click', () => togglePanel(panel.dataset.panel));
+  });
+  window.addEventListener('resize', () => { layoutSpectrogramStage(); drawAxes(); drawOverlay(); updatePlayhead(false); });
   if (el.freqScaleSelect) el.freqScaleSelect.addEventListener('change', applySpectrogramSettings);
   if (el.colormapSelect) el.colormapSelect.addEventListener('change', applySpectrogramSettings);
   syncRangeNumber(el.scoreThreshold, el.scoreThresholdInput, 3, 0, 0.99);
@@ -906,6 +1116,7 @@ function attachEvents() {
 }
 
 attachEvents();
+resetPanelsForInitialState();
 
 if (location.protocol === 'file:') {
   showToast('Abre con servidor local', 'No abras el HTML con doble clic. Usa http://localhost o GitHub Pages.', 9000);

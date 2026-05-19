@@ -1,11 +1,13 @@
 # Bioacoustic Template Labeler
 
-Aplicación web pura para etiquetado asistido de patrones acústicos en espectrogramas.
+Aplicación web pura para marcar una plantilla acústica en un espectrograma y buscar regiones similares por embeddings simples del patch espectral.
 
 ## Inicio rápido
 
-```powershell
-cd bioacoustic-template-labeler-wizard
+Descomprime el ZIP y sirve la carpeta con un servidor local. Por ejemplo, con Python/Conda:
+
+```bash
+cd bioacoustic-template-labeler-wizard-v8
 python -m http.server 8000
 ```
 
@@ -15,25 +17,14 @@ Abre:
 http://localhost:8000
 ```
 
-No abras `index.html` directamente con doble clic. Usa un servidor local o GitHub Pages.
+También puedes publicar los archivos directamente en GitHub Pages. El archivo `index.html` debe quedar en la raíz del repositorio.
 
-## Funciones
+## Notas de esta versión
 
-- Carga local de audio en el navegador.
-- Construcción automática del espectrograma al subir audio.
-- Reproductor inferior limpio.
-- Espectrograma con ROI interactiva por arrastre.
-- Eje de frecuencia fijo y visible.
-- Nombre del archivo como cabecera del espectrograma.
-- Escala de frecuencia lineal o mel.
-- Mapa de color magma o blanco y negro.
-- Búsqueda por similitud de embedding.
-- Exportación CSV de candidatos.
-- Documentación en `documentacion.html`.
-
-## Publicación en GitHub Pages
-
-Sube todo el contenido del proyecto a un repositorio, dejando `index.html` en la raíz. En GitHub usa:
-
-`Settings → Pages → Deploy from a branch → main → /root`
-
+- El reproductor está integrado dentro del módulo del espectrograma.
+- El espectrograma evita scroll vertical interno y conserva navegación horizontal.
+- El panel derecho tiene scroll propio.
+- Los paneles del lado derecho son acordeones completos: se expanden con toda su altura y se contraen limpiamente.
+- La configuración del espectrograma queda contraída por defecto.
+- El flujo tipo wizard abre/cierra secciones según la acción: marcar ROI, guardar plantilla, buscar y revisar resultados.
+- Exporta resultados en CSV y XLSX.

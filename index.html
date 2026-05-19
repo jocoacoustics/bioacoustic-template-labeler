@@ -18,11 +18,9 @@
       </div>
       <div class="top-actions">
         <button id="btnOpenAudio" class="btn btn-primary">Subir / cambiar audio</button>
-        <button id="btnExportCsv" class="btn" disabled>Exportar CSV</button>
         <a class="btn btn-ghost" href="documentacion.html" target="_blank" rel="noopener">Documentación</a>
       </div>
     </header>
-
 
     <main class="workspace">
       <section class="spectrogram-card">
@@ -58,94 +56,123 @@
             <canvas id="timeAxisCanvas" class="time-axis"></canvas>
           </div>
         </div>
+
+        <div class="spectrogram-player">
+          <audio id="audioPlayer" controls preload="metadata"></audio>
+        </div>
       </section>
 
-      <aside class="side-panel">
-        <section class="coach-card">
-          <div class="section-title">Guía</div>
-          <div id="coachTitle" class="coach-title">Sube un audio</div>
-          <p id="coachText" class="coach-text">Apenas selecciones el archivo, la app decodifica el audio y construye el espectrograma automáticamente.</p>
-        </section>
-
-        <section class="panel-card">
-          <div class="section-title">Configuración del espectrograma</div>
-          <label class="control-label">Escala de frecuencia
-            <select id="freqScaleSelect">
-              <option value="linear" selected>lineal</option>
-              <option value="mel">mel</option>
-            </select>
-          </label>
-          <label class="control-label">Color
-            <select id="colormapSelect">
-              <option value="magma" selected>magma</option>
-              <option value="gray">blanco y negro</option>
-            </select>
-          </label>
-          <div class="mini-summary">Al cambiar estos controles, solo se redibuja la visualización; no hace falta volver a subir el audio.</div>
-        </section>
-
-        <section class="panel-card">
-          <div class="section-title">ROI plantilla</div>
-          <div class="field-grid">
-            <label>tmin <input id="roiTmin" type="number" step="0.001" value="0" /></label>
-            <label>tmax <input id="roiTmax" type="number" step="0.001" value="0" /></label>
-            <label>fmin <input id="roiFmin" type="number" step="1" value="0" /></label>
-            <label>fmax <input id="roiFmax" type="number" step="1" value="0" /></label>
+      <aside class="side-panel" aria-label="Panel de configuración">
+        <section class="coach-card accordion-panel is-open" data-panel="guide">
+          <button class="accordion-head" type="button" aria-expanded="true">
+            <span class="section-title">Guía</span>
+            <span class="accordion-icon">▴</span>
+          </button>
+          <div class="accordion-content">
+            <div id="coachTitle" class="coach-title">Sube un audio</div>
+            <p id="coachText" class="coach-text">Apenas selecciones el archivo, la app decodifica el audio y construye el espectrograma automáticamente.</p>
           </div>
-          <div class="button-row">
-            <button id="btnApplyRoi" class="btn btn-small" disabled>Aplicar ROI</button>
-            <button id="btnSaveRoi" class="btn btn-warning btn-small" disabled>Guardar plantilla</button>
-          </div>
-          <button id="btnClearRoi" class="btn btn-ghost full" disabled>Limpiar ROI</button>
-          <div id="roiSummary" class="mini-summary">Sin ROI.</div>
         </section>
 
-        <section class="panel-card">
-          <div class="section-title">Búsqueda por embedding</div>
-          <label class="control-label">Métrica
-            <select id="metricSelect">
-              <option value="coseno" selected>coseno</option>
-              <option value="euclidiana">euclidiana</option>
-            </select>
-          </label>
-          <label class="control-label">Score mínimo
-            <div class="slider-number-row">
-              <input id="scoreThreshold" type="range" min="0" max="0.99" step="0.001" value="0.85" />
-              <input id="scoreThresholdInput" class="number-compact" type="number" min="0" max="0.99" step="0.001" value="0.85" />
+        <section class="panel-card accordion-panel is-collapsed" data-panel="spectrogram-config">
+          <button class="accordion-head" type="button" aria-expanded="false">
+            <span class="section-title">Configuración del espectrograma</span>
+            <span class="accordion-icon">▾</span>
+          </button>
+          <div class="accordion-content">
+            <label class="control-label">Escala de frecuencia
+              <select id="freqScaleSelect">
+                <option value="linear" selected>lineal</option>
+                <option value="mel">mel</option>
+              </select>
+            </label>
+            <label class="control-label">Color
+              <select id="colormapSelect">
+                <option value="magma" selected>magma</option>
+                <option value="gray">blanco y negro</option>
+              </select>
+            </label>
+            <div class="mini-summary">Al cambiar estos controles, solo se redibuja la visualización; no hace falta volver a subir el audio.</div>
+          </div>
+        </section>
+
+        <section class="panel-card accordion-panel is-collapsed" data-panel="roi">
+          <button class="accordion-head" type="button" aria-expanded="false">
+            <span class="section-title">ROI plantilla</span>
+            <span class="accordion-icon">▾</span>
+          </button>
+          <div class="accordion-content">
+            <div class="field-grid">
+              <label>tmin <input id="roiTmin" type="number" step="0.001" value="0" /></label>
+              <label>tmax <input id="roiTmax" type="number" step="0.001" value="0" /></label>
+              <label>fmin <input id="roiFmin" type="number" step="1" value="0" /></label>
+              <label>fmax <input id="roiFmax" type="number" step="1" value="0" /></label>
             </div>
-          </label>
-          <label class="control-label">Stride temporal (s)
-            <div class="slider-number-row">
-              <input id="strideSec" type="range" min="0.01" max="1.00" step="0.01" value="0.10" />
-              <input id="strideSecInput" class="number-compact" type="number" min="0.01" max="1.00" step="0.01" value="0.10" />
+            <div class="button-row">
+              <button id="btnApplyRoi" class="btn btn-small" disabled>Aplicar ROI</button>
+              <button id="btnSaveRoi" class="btn btn-warning btn-small" disabled>Guardar plantilla</button>
             </div>
-          </label>
-          <div class="button-row">
-            <button id="btnSearch" class="btn btn-success" disabled>Buscar similares</button>
-            <button id="btnClearMatches" class="btn btn-ghost" disabled>Limpiar</button>
+            <button id="btnClearRoi" class="btn btn-ghost full" disabled>Limpiar ROI</button>
+            <div id="roiSummary" class="mini-summary">Sin ROI.</div>
           </div>
-          <div id="matchSummary" class="mini-summary">Sin matches.</div>
         </section>
 
-        <section class="panel-card results-card">
-          <div class="section-title">Resultados</div>
-          <div class="table-wrap">
-            <table id="matchesTable">
-              <thead>
-                <tr><th>#</th><th>score</th><th>t</th></tr>
-              </thead>
-              <tbody>
-                <tr><td colspan="3" class="muted-cell">Sin resultados</td></tr>
-              </tbody>
-            </table>
+        <section class="panel-card accordion-panel is-collapsed" data-panel="search">
+          <button class="accordion-head" type="button" aria-expanded="false">
+            <span class="section-title">Búsqueda por embedding</span>
+            <span class="accordion-icon">▾</span>
+          </button>
+          <div class="accordion-content">
+            <label class="control-label">Métrica
+              <select id="metricSelect">
+                <option value="coseno" selected>coseno</option>
+                <option value="euclidiana">euclidiana</option>
+              </select>
+            </label>
+            <label class="control-label">Score mínimo
+              <div class="slider-number-row">
+                <input id="scoreThreshold" type="range" min="0" max="0.99" step="0.001" value="0.85" />
+                <input id="scoreThresholdInput" class="number-compact" type="number" min="0" max="0.99" step="0.001" value="0.85" />
+              </div>
+            </label>
+            <label class="control-label">Stride temporal (s)
+              <div class="slider-number-row">
+                <input id="strideSec" type="range" min="0.01" max="1.00" step="0.01" value="0.10" />
+                <input id="strideSecInput" class="number-compact" type="number" min="0.01" max="1.00" step="0.01" value="0.10" />
+              </div>
+            </label>
+            <div class="button-row">
+              <button id="btnSearch" class="btn btn-success" disabled>Buscar similares</button>
+              <button id="btnClearMatches" class="btn btn-ghost" disabled>Limpiar</button>
+            </div>
+            <div id="matchSummary" class="mini-summary">Sin matches.</div>
+          </div>
+        </section>
+
+        <section class="panel-card results-card accordion-panel is-collapsed" data-panel="results">
+          <button class="accordion-head" type="button" aria-expanded="false">
+            <span class="section-title">Resultados</span>
+            <span class="accordion-icon">▾</span>
+          </button>
+          <div class="accordion-content">
+            <div class="results-actions">
+              <button id="btnExportCsv" class="btn btn-small" disabled>Descargar CSV</button>
+              <button id="btnExportXlsx" class="btn btn-small" disabled>Descargar XLSX</button>
+            </div>
+            <div class="table-wrap">
+              <table id="matchesTable">
+                <thead>
+                  <tr><th>#</th><th>score</th><th>t</th></tr>
+                </thead>
+                <tbody>
+                  <tr><td colspan="3" class="muted-cell">Sin resultados</td></tr>
+                </tbody>
+              </table>
+            </div>
           </div>
         </section>
       </aside>
     </main>
-
-    <section class="player-card bottom-player">
-      <audio id="audioPlayer" controls preload="metadata"></audio>
-    </section>
   </div>
 
   <div id="welcomeModal" class="modal-backdrop active">
