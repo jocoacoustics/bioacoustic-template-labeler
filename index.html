@@ -1,0 +1,181 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Bioacoustic Template Labeler</title>
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <div id="appShell" class="app-shell">
+    <header class="topbar">
+      <div class="brand">
+        <img class="brand-logo" src="https://jocotoco.org.ec/dct/tmp_adjuntos/noEn/000/073/MatrizDatos_1757014841Logo-jocotoco2025.svg" alt="Logo Jocotoco" />
+        <div>
+          <h1>Bioacoustic Template Labeler</h1>
+          <p>ROI manual + búsqueda por similitud de embedding en espectrogramas</p>
+        </div>
+      </div>
+      <div class="top-actions">
+        <button id="btnOpenAudio" class="btn btn-primary">Subir / cambiar audio</button>
+        <button id="btnExportCsv" class="btn" disabled>Exportar CSV</button>
+        <a class="btn btn-ghost" href="documentacion.html" target="_blank" rel="noopener">Documentación</a>
+      </div>
+    </header>
+
+
+    <main class="workspace">
+      <section class="spectrogram-card">
+        <div class="viewer-toolbar">
+          <div class="viewer-status-block">
+            <strong id="spectrogramTitle" class="spectrogram-title">Sin espectrograma</strong>
+            <div class="viewer-status">
+              <span id="workflowBadge" class="badge">Sin audio</span>
+              <span id="viewerHint">Sube un audio para construir el espectrograma automáticamente.</span>
+            </div>
+          </div>
+          <div class="viewer-controls">
+            <label class="checkline">
+              <input id="followPlayback" type="checkbox" checked />
+              Seguir reproducción
+            </label>
+            <button id="btnCenterPlayhead" class="btn btn-small" disabled>Centrar cursor</button>
+          </div>
+        </div>
+
+        <div id="spectrogramViewport" class="spectrogram-viewport empty">
+          <div id="emptyViewer" class="empty-viewer">
+            <div class="empty-icon">♪</div>
+            <p>El espectrograma aparecerá aquí.</p>
+          </div>
+          <div id="spectrogramStage" class="spectrogram-stage" hidden>
+            <canvas id="freqAxisCanvas" class="freq-axis"></canvas>
+            <div id="canvasLayer" class="canvas-layer">
+              <canvas id="spectrogramCanvas"></canvas>
+              <canvas id="overlayCanvas"></canvas>
+              <div id="playhead"></div>
+            </div>
+            <canvas id="timeAxisCanvas" class="time-axis"></canvas>
+          </div>
+        </div>
+      </section>
+
+      <aside class="side-panel">
+        <section class="coach-card">
+          <div class="section-title">Guía</div>
+          <div id="coachTitle" class="coach-title">Sube un audio</div>
+          <p id="coachText" class="coach-text">Apenas selecciones el archivo, la app decodifica el audio y construye el espectrograma automáticamente.</p>
+        </section>
+
+        <section class="panel-card">
+          <div class="section-title">Configuración del espectrograma</div>
+          <label class="control-label">Escala de frecuencia
+            <select id="freqScaleSelect">
+              <option value="linear" selected>lineal</option>
+              <option value="mel">mel</option>
+            </select>
+          </label>
+          <label class="control-label">Color
+            <select id="colormapSelect">
+              <option value="magma" selected>magma</option>
+              <option value="gray">blanco y negro</option>
+            </select>
+          </label>
+          <div class="mini-summary">Al cambiar estos controles, solo se redibuja la visualización; no hace falta volver a subir el audio.</div>
+        </section>
+
+        <section class="panel-card">
+          <div class="section-title">ROI plantilla</div>
+          <div class="field-grid">
+            <label>tmin <input id="roiTmin" type="number" step="0.001" value="0" /></label>
+            <label>tmax <input id="roiTmax" type="number" step="0.001" value="0" /></label>
+            <label>fmin <input id="roiFmin" type="number" step="1" value="0" /></label>
+            <label>fmax <input id="roiFmax" type="number" step="1" value="0" /></label>
+          </div>
+          <div class="button-row">
+            <button id="btnApplyRoi" class="btn btn-small" disabled>Aplicar ROI</button>
+            <button id="btnSaveRoi" class="btn btn-warning btn-small" disabled>Guardar plantilla</button>
+          </div>
+          <button id="btnClearRoi" class="btn btn-ghost full" disabled>Limpiar ROI</button>
+          <div id="roiSummary" class="mini-summary">Sin ROI.</div>
+        </section>
+
+        <section class="panel-card">
+          <div class="section-title">Búsqueda por embedding</div>
+          <label class="control-label">Métrica
+            <select id="metricSelect">
+              <option value="coseno" selected>coseno</option>
+              <option value="euclidiana">euclidiana</option>
+            </select>
+          </label>
+          <label class="control-label">Score mínimo
+            <div class="slider-number-row">
+              <input id="scoreThreshold" type="range" min="0" max="0.99" step="0.001" value="0.85" />
+              <input id="scoreThresholdInput" class="number-compact" type="number" min="0" max="0.99" step="0.001" value="0.85" />
+            </div>
+          </label>
+          <label class="control-label">Stride temporal (s)
+            <div class="slider-number-row">
+              <input id="strideSec" type="range" min="0.01" max="1.00" step="0.01" value="0.10" />
+              <input id="strideSecInput" class="number-compact" type="number" min="0.01" max="1.00" step="0.01" value="0.10" />
+            </div>
+          </label>
+          <div class="button-row">
+            <button id="btnSearch" class="btn btn-success" disabled>Buscar similares</button>
+            <button id="btnClearMatches" class="btn btn-ghost" disabled>Limpiar</button>
+          </div>
+          <div id="matchSummary" class="mini-summary">Sin matches.</div>
+        </section>
+
+        <section class="panel-card results-card">
+          <div class="section-title">Resultados</div>
+          <div class="table-wrap">
+            <table id="matchesTable">
+              <thead>
+                <tr><th>#</th><th>score</th><th>t</th></tr>
+              </thead>
+              <tbody>
+                <tr><td colspan="3" class="muted-cell">Sin resultados</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </section>
+      </aside>
+    </main>
+
+    <section class="player-card bottom-player">
+      <audio id="audioPlayer" controls preload="metadata"></audio>
+    </section>
+  </div>
+
+  <div id="welcomeModal" class="modal-backdrop active">
+    <div class="modal-card">
+      <img class="modal-logo" src="https://jocotoco.org.ec/dct/tmp_adjuntos/noEn/000/073/MatrizDatos_1757014841Logo-jocotoco2025.svg" alt="Logo Jocotoco" />
+      <div class="modal-icon">🎧</div>
+      <h2>Sube un audio para comenzar</h2>
+      <p>La app construirá el espectrograma automáticamente y luego te guiará para marcar una plantilla.</p>
+      <div id="dropZone" class="drop-zone">
+        <strong>Arrastra un audio aquí</strong>
+        <span>o pulsa el botón para seleccionarlo</span>
+      </div>
+      <button id="btnModalUpload" class="btn btn-primary btn-large">Seleccionar audio</button>
+      <p class="modal-note">Todo se procesa localmente en tu navegador. El audio no se sube a ningún servidor.</p>
+    </div>
+  </div>
+
+  <div id="processingOverlay" class="modal-backdrop">
+    <div class="processing-card">
+      <div class="spinner-logo-wrap"><div class="spinner"></div><img class="spinner-logo" src="https://jocotoco.org.ec/dct/tmp_adjuntos/noEn/000/073/MatrizDatos_1757014841Logo-jocotoco2025.svg" alt="Logo Jocotoco" /></div>
+      <h2 id="processingTitle">Procesando audio</h2>
+      <p id="processingText">Preparando...</p>
+      <div class="progress-track"><div id="processingBar" class="progress-fill"></div></div>
+    </div>
+  </div>
+
+  <div id="toastHost" class="toast-host"></div>
+
+  <input id="fileInput" type="file" accept=".wav,.mp3,.flac,.ogg,.m4a,audio/*" hidden />
+
+  <script src="src/app.js"></script>
+</body>
+</html>

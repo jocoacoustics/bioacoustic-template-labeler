@@ -1,0 +1,301 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Documentación · Bioacoustic Template Labeler</title>
+  <style>
+    :root {
+      --bg: #ffffff;
+      --paper: #ffffff;
+      --text: #1f2937;
+      --muted: #667085;
+      --border: #e5e7eb;
+      --soft: #f8fafc;
+      --code: #f6f8fa;
+      --primary: #2563eb;
+      --heading: #0f172a;
+      --sidebar: #f9fafb;
+    }
+    * { box-sizing: border-box; }
+    html { scroll-behavior: smooth; }
+    body {
+      margin: 0;
+      background: var(--bg);
+      color: var(--text);
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      line-height: 1.65;
+    }
+    .layout {
+      display: grid;
+      grid-template-columns: 280px minmax(0, 860px);
+      gap: 32px;
+      max-width: 1240px;
+      margin: 0 auto;
+      padding: 32px 24px 56px;
+    }
+    aside {
+      position: sticky;
+      top: 20px;
+      align-self: start;
+      height: calc(100vh - 40px);
+      overflow: auto;
+      background: var(--sidebar);
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      padding: 18px 16px;
+    }
+    aside .logo {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding-bottom: 14px;
+      border-bottom: 1px solid var(--border);
+      margin-bottom: 14px;
+    }
+    aside img { width: 42px; height: 42px; object-fit: contain; background: white; border-radius: 10px; border: 1px solid var(--border); padding: 4px; }
+    aside strong { display: block; color: var(--heading); line-height: 1.2; }
+    aside span { display: block; color: var(--muted); font-size: 12px; margin-top: 2px; }
+    nav a {
+      display: block;
+      padding: 7px 8px;
+      color: #334155;
+      text-decoration: none;
+      border-radius: 8px;
+      font-size: 14px;
+    }
+    nav a:hover { background: #eef2ff; color: var(--primary); }
+    main { min-width: 0; }
+    .doc-header {
+      border-bottom: 1px solid var(--border);
+      padding-bottom: 22px;
+      margin-bottom: 28px;
+    }
+    h1, h2, h3 { color: var(--heading); line-height: 1.25; }
+    h1 { font-size: 36px; margin: 0 0 8px; letter-spacing: -0.03em; }
+    h2 { font-size: 25px; margin: 38px 0 12px; padding-top: 8px; border-top: 1px solid var(--border); }
+    h3 { font-size: 18px; margin: 24px 0 8px; }
+    p { margin: 0 0 14px; }
+    .lead { color: var(--muted); font-size: 17px; max-width: 780px; }
+    .note {
+      background: #eff6ff;
+      border: 1px solid #bfdbfe;
+      border-left: 4px solid var(--primary);
+      padding: 12px 14px;
+      border-radius: 10px;
+      margin: 18px 0;
+    }
+    .warn {
+      background: #fff7ed;
+      border: 1px solid #fed7aa;
+      border-left: 4px solid #f97316;
+      padding: 12px 14px;
+      border-radius: 10px;
+      margin: 18px 0;
+    }
+    code {
+      background: var(--code);
+      border: 1px solid var(--border);
+      border-radius: 5px;
+      padding: 0.15em 0.35em;
+      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
+      font-size: 0.92em;
+    }
+    pre {
+      background: var(--code);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 14px 16px;
+      overflow: auto;
+      margin: 14px 0 20px;
+    }
+    pre code { border: none; background: transparent; padding: 0; }
+    ul, ol { padding-left: 24px; margin: 8px 0 16px; }
+    li { margin: 4px 0; }
+    table { width: 100%; border-collapse: collapse; margin: 16px 0 22px; font-size: 14px; }
+    th, td { border: 1px solid var(--border); padding: 9px 10px; text-align: left; vertical-align: top; }
+    th { background: var(--soft); color: var(--heading); }
+    .kbd { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; background: var(--code); border: 1px solid var(--border); padding: 2px 6px; border-radius: 6px; }
+    .footer { margin-top: 44px; padding-top: 18px; border-top: 1px solid var(--border); color: var(--muted); font-size: 14px; }
+    @media (max-width: 980px) {
+      .layout { grid-template-columns: 1fr; padding: 20px 16px 42px; }
+      aside { position: relative; top: auto; height: auto; }
+      h1 { font-size: 30px; }
+    }
+  </style>
+  <script>
+    window.MathJax = { tex: { inlineMath: [['$', '$']], displayMath: [['$$', '$$']] } };
+  </script>
+  <script defer src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-chtml.js"></script>
+</head>
+<body>
+  <div class="layout">
+    <aside>
+      <div class="logo">
+        <img src="https://jocotoco.org.ec/dct/tmp_adjuntos/noEn/000/073/MatrizDatos_1757014841Logo-jocotoco2025.svg" alt="Logo Jocotoco">
+        <div>
+          <strong>Documentación</strong>
+          <span>Bioacoustic Template Labeler</span>
+        </div>
+      </div>
+      <nav>
+        <a href="#inicio">Inicio rápido</a>
+        <a href="#ejecutar-local">Ejecutar localmente</a>
+        <a href="#github-pages">Publicar en GitHub Pages</a>
+        <a href="#flujo">Flujo de uso</a>
+        <a href="#interfaz">Interfaz</a>
+        <a href="#parametros">Parámetros</a>
+        <a href="#matematica">Formulación matemática</a>
+        <a href="#exportacion">Exportación CSV</a>
+        <a href="#problemas">Problemas frecuentes</a>
+        <a href="#arriba">Volver arriba</a>
+      </nav>
+    </aside>
+
+    <main id="arriba">
+      <header class="doc-header">
+        <h1>Bioacoustic Template Labeler</h1>
+        <p class="lead">Aplicación web pura para marcar una plantilla sobre un espectrograma y buscar regiones acústicas similares por embeddings locales. Todo corre en el navegador: no hay servidor, no hay Python en producción y el audio no se sube a internet.</p>
+      </header>
+
+      <section id="inicio">
+        <h2>Inicio rápido</h2>
+        <ol>
+          <li>Abre la aplicación desde <code>index.html</code> servida por un servidor local o desde GitHub Pages.</li>
+          <li>Pulsa <strong>Subir / cambiar audio</strong> o arrastra un audio en el modal inicial.</li>
+          <li>La aplicación decodifica el audio y construye el espectrograma automáticamente.</li>
+          <li>Arrastra una caja roja sobre el patrón acústico que quieres usar como plantilla.</li>
+          <li>Pulsa <strong>Guardar plantilla</strong>.</li>
+          <li>Ajusta <strong>score mínimo</strong>, <strong>stride temporal</strong> y <strong>métrica</strong>.</li>
+          <li>Pulsa <strong>Buscar similares</strong>.</li>
+          <li>Exporta los candidatos con <strong>Exportar CSV</strong>.</li>
+        </ol>
+        <div class="note">La construcción del espectrograma es automática después de subir el audio. No hay un botón separado para construirlo.</div>
+      </section>
+
+      <section id="ejecutar-local">
+        <h2>Ejecutar localmente</h2>
+        <p>No abras el archivo con doble clic como <code>file:///...</code>. Algunos navegadores bloquean los Web Workers y la carga de módulos locales. Sirve la carpeta como sitio web local.</p>
+        <h3>Con Conda o Python</h3>
+        <pre><code>cd C:\Users\Usuario\Downloads\bioacoustic-template-labeler-wizard
+python -m http.server 8000</code></pre>
+        <p>Luego abre:</p>
+        <pre><code>http://localhost:8000</code></pre>
+        <h3>Con Node.js</h3>
+        <pre><code>npx --yes http-server . -p 8000 -c-1</code></pre>
+      </section>
+
+      <section id="github-pages">
+        <h2>Publicar en GitHub Pages</h2>
+        <ol>
+          <li>Crea un repositorio en GitHub.</li>
+          <li>Sube todo el contenido del proyecto, dejando <code>index.html</code> en la raíz.</li>
+          <li>Entra a <span class="kbd">Settings</span> → <span class="kbd">Pages</span>.</li>
+          <li>Selecciona <strong>Deploy from a branch</strong>.</li>
+          <li>Selecciona la rama <code>main</code> y carpeta <code>/root</code>.</li>
+          <li>Guarda y espera la URL pública.</li>
+        </ol>
+        <div class="note">GitHub Pages sirve archivos estáticos. Esta app funciona porque todo el procesamiento se realiza en JavaScript dentro del navegador.</div>
+      </section>
+
+      <section id="flujo">
+        <h2>Flujo de uso</h2>
+        <p>El flujo está diseñado como una sola pantalla de trabajo con guía contextual:</p>
+        <ol>
+          <li><strong>Subir audio:</strong> se carga el archivo local.</li>
+          <li><strong>Procesamiento automático:</strong> se decodifica el audio y se calcula el espectrograma.</li>
+          <li><strong>Exploración:</strong> el reproductor inferior controla el audio y el espectrograma puede seguir la reproducción.</li>
+          <li><strong>ROI:</strong> se dibuja una caja sobre el patrón acústico.</li>
+          <li><strong>Plantilla:</strong> la ROI se guarda como referencia.</li>
+          <li><strong>Búsqueda:</strong> se comparan ventanas candidatas contra la plantilla.</li>
+          <li><strong>Resultados:</strong> se dibujan cajas azules y se llena la tabla de candidatos.</li>
+          <li><strong>Exportación:</strong> se descarga un CSV con las cajas candidatas.</li>
+        </ol>
+      </section>
+
+      <section id="interfaz">
+        <h2>Interfaz</h2>
+        <table>
+          <thead><tr><th>Zona</th><th>Función</th></tr></thead>
+          <tbody>
+            <tr><td>Cabecera</td><td>Logo, nombre de la app, subir/cambiar audio, exportar CSV y documentación.</td></tr>
+            <tr><td>Espectrograma</td><td>Área principal de visualización, con ROI roja, matches azules, eje de frecuencia fijo y eje temporal desplazable.</td></tr>
+            <tr><td>Panel derecho</td><td>Guía, configuración del espectrograma, ROI, búsqueda por embedding y tabla de resultados.</td></tr>
+            <tr><td>Reproductor inferior</td><td>Barra de reproducción limpia, sin metadatos adicionales.</td></tr>
+          </tbody>
+        </table>
+        <p>El eje de frecuencia permanece visible mientras el espectrograma se desplaza horizontalmente. El botón <strong>Centrar cursor</strong> centra el visor en el tiempo actual del audio.</p>
+      </section>
+
+      <section id="parametros">
+        <h2>Parámetros</h2>
+        <h3>Configuración del espectrograma</h3>
+        <ul>
+          <li><strong>Escala de frecuencia:</strong> lineal o mel.</li>
+          <li><strong>Color:</strong> magma o blanco y negro.</li>
+        </ul>
+        <h3>ROI plantilla</h3>
+        <ul>
+          <li><code>tmin</code>, <code>tmax</code>: límites temporales en segundos.</li>
+          <li><code>fmin</code>, <code>fmax</code>: límites de frecuencia en Hz.</li>
+        </ul>
+        <h3>Búsqueda por embedding</h3>
+        <ul>
+          <li><strong>Métrica:</strong> coseno o euclidiana.</li>
+          <li><strong>Score mínimo:</strong> umbral desde 0 hasta 0.99.</li>
+          <li><strong>Stride temporal:</strong> separación temporal entre ventanas candidatas.</li>
+        </ul>
+      </section>
+
+      <section id="matematica">
+        <h2>Formulación matemática</h2>
+        <p>Sea $x[n]$ una señal de audio discreta. La aplicación calcula una transformada de Fourier de tiempo corto:</p>
+        <p>$$X[k,m] = \sum_n x[n] w[n - mH] e^{-2\pi i k n / N}$$</p>
+        <p>donde $N$ es el tamaño de la ventana, $H$ es el salto entre ventanas, $w$ es la ventana de análisis, $k$ indexa frecuencia y $m$ indexa tiempo.</p>
+        <p>Luego se trabaja con la magnitud logarítmica:</p>
+        <p>$$S[k,m] = 20\log_{10}(|X[k,m]| + \varepsilon)$$</p>
+        <p>Una ROI se define como:</p>
+        <p>$$R = [t_{\min}, t_{\max}, f_{\min}, f_{\max}]$$</p>
+        <p>Esta ROI se convierte a índices del espectrograma y extrae un patch:</p>
+        <p>$$P = S[i_{f0}:i_{f1}, i_{t0}:i_{t1}]$$</p>
+        <p>El patch se normaliza localmente:</p>
+        <p>$$P_{\text{norm}} = \frac{P - \min(P)}{\max(P) - \min(P) + \varepsilon}$$</p>
+        <p>Después se redimensiona a $48 \times 48$ y se aplana:</p>
+        <p>$$z = \operatorname{vec}(\operatorname{resize}(P_{\text{norm}}, 48, 48))$$</p>
+        <p>Como $48 \times 48 = 2304$, cada patch queda representado por un vector de 2304 dimensiones. Luego se estandariza y normaliza:</p>
+        <p>$$\tilde{z} = \frac{z - \mu_z}{\sigma_z + \varepsilon}$$</p>
+        <p>$$e = \frac{\tilde{z}}{\|\tilde{z}\|_2 + \varepsilon}$$</p>
+        <p>Para cada ventana candidata $C_j$ se calcula su embedding $e_j$. Con similitud coseno:</p>
+        <p>$$\operatorname{score}(R, C_j) = e_R^\top e_j$$</p>
+        <p>Con distancia euclidiana normalizada:</p>
+        <p>$$d(R, C_j) = \|e_R - e_j\|_2$$</p>
+        <p>$$\operatorname{score}(R, C_j) = 1 - \frac{d(R, C_j)}{2}$$</p>
+        <p>Una ventana se conserva si:</p>
+        <p>$$\operatorname{score}(R, C_j) \geq \tau$$</p>
+        <p>donde $\tau$ es el score mínimo seleccionado por el usuario.</p>
+      </section>
+
+      <section id="exportacion">
+        <h2>Exportación CSV</h2>
+        <p>El CSV exportado contiene candidatos detectados por similitud:</p>
+        <pre><code>audio,tmin,tmax,fmin,fmax,score,estado</code></pre>
+        <p>Estos resultados son candidatos, no validaciones definitivas. Una fase posterior puede agregar revisión manual, aceptar/rechazar y entrenamiento supervisado.</p>
+      </section>
+
+      <section id="problemas">
+        <h2>Problemas frecuentes</h2>
+        <h3>El HTML abre, pero no funciona el audio o el worker</h3>
+        <p>Abre el proyecto desde <code>http://localhost:8000</code>, no con doble clic.</p>
+        <h3>El espectrograma tarda</h3>
+        <p>Audios largos pueden tardar porque el cálculo se hace localmente en el navegador. Espera a que termine el indicador de procesamiento.</p>
+        <h3>Demasiadas cajas azules</h3>
+        <p>Sube el score mínimo o marca una ROI más específica.</p>
+        <h3>Muy pocas cajas</h3>
+        <p>Baja el score mínimo, aumenta la banda o prueba una ROI más representativa.</p>
+      </section>
+
+      <p class="footer">Proyecto web estático. Puede publicarse en GitHub Pages. El audio se procesa localmente en el navegador del usuario.</p>
+    </main>
+  </div>
+</body>
+</html>
