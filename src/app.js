@@ -41,6 +41,7 @@ const el = {
   btnOpenAudio: document.getElementById('btnOpenAudio'),
   btnExportCsv: document.getElementById('btnExportCsv'),
   btnExportXlsx: document.getElementById('btnExportXlsx'),
+  btnExportTxt: document.getElementById('btnExportTxt'),
   btnModalUpload: document.getElementById('btnModalUpload'),
   fileInput: document.getElementById('fileInput'),
   welcomeModal: document.getElementById('welcomeModal'),
@@ -75,6 +76,7 @@ const el = {
   roiTmax: document.getElementById('roiTmax'),
   roiFmin: document.getElementById('roiFmin'),
   roiFmax: document.getElementById('roiFmax'),
+  roiLabel: document.getElementById('roiLabel'),
   btnApplyRoi: document.getElementById('btnApplyRoi'),
   btnSaveRoi: document.getElementById('btnSaveRoi'),
   btnClearRoi: document.getElementById('btnClearRoi'),
@@ -216,6 +218,7 @@ function resetForNewAudio() {
   el.roiTmax.value = 0;
   el.roiFmin.value = 0;
   el.roiFmax.value = 0;
+  if (el.roiLabel) el.roiLabel.value = '';
   el.roiSummary.textContent = 'Sin ROI.';
   el.matchSummary.textContent = 'Sin matches.';
   el.spectrogramTitle.textContent = state.file ? `Espectrograma · ${state.file.name}` : 'Sin espectrograma';
@@ -226,6 +229,7 @@ function resetForNewAudio() {
   el.btnClearMatches.disabled = true;
   el.btnExportCsv.disabled = true;
   if (el.btnExportXlsx) el.btnExportXlsx.disabled = true;
+  if (el.btnExportTxt) el.btnExportTxt.disabled = true;
   clearMatchesTable();
   resetPanelsForInitialState();
   drawOverlay();
@@ -305,12 +309,14 @@ function onWorkerMessage(ev) {
 
   if (msg.type === 'search-ready') {
     hideProcessing();
-    state.matches = msg.matches || [];
+    const etiqueta = cleanLabel(state.savedRoi?.etiqueta ?? currentEtiqueta());
+    state.matches = (msg.matches || []).map(m => addEtiquetaToMatch(m, etiqueta));
     drawOverlay();
     renderMatchesTable();
     el.btnClearMatches.disabled = state.matches.length === 0;
     el.btnExportCsv.disabled = state.matches.length === 0;
     if (el.btnExportXlsx) el.btnExportXlsx.disabled = state.matches.length === 0;
+    if (el.btnExportTxt) el.btnExportTxt.disabled = state.matches.length === 0;
     el.matchSummary.textContent = state.matches.length
       ? `${state.matches.length} matches encontrados. Mejor score: ${state.matches[0].score.toFixed(3)}.`
       : 'No hubo matches con ese umbral.';
@@ -785,7 +791,7 @@ function stopAnimationLoop() {
 }
 
 function clearMatchesTable() {
-  el.matchesTable.querySelector('tbody').innerHTML = '<tr><td colspan="3" class="muted-cell">Sin resultados</td></tr>';
+  el.matchesTable.querySelector('tbody').innerHTML = '<tr><td colspan="4" class="muted-cell">Sin resultados</td></tr>';
 }
 
 function renderMatchesTable() {
@@ -798,7 +804,7 @@ function renderMatchesTable() {
   state.matches.slice(0, 80).forEach((m, i) => {
     const tr = document.createElement('tr');
     tr.className = 'match-row';
-    tr.innerHTML = `<td>${i + 1}</td><td>${m.score.toFixed(3)}</td><td>${m.tmin.toFixed(2)}-${m.tmax.toFixed(2)}</td>`;
+    tr.innerHTML = `<td>${i + 1}</td><td>${m.score.toFixed(3)}</td><td>${m.tmin.toFixed(2)}-${m.tmax.toFixed(2)}</td><td>${escapeHtml(m.etiqueta || '')}</td>`;
     tr.addEventListener('click', () => {
       el.audioPlayer.currentTime = m.tmin;
       updatePlayhead(true);
@@ -809,44 +815,62 @@ function renderMatchesTable() {
   });
 }
 
+function getExportBaseName() {
+  const name = state.file?.name || 'embedding_matches';
+  const dot = name.lastIndexOf('.');
+  return dot > 0 ? name.slice(0, dot) : name;
+}
+
 function exportCsv() {
   if (!state.matches.length) return;
-  const header = ['audio','tmin','tmax','fmin','fmax','score','estado'];
+  const header = ['audio','tmin','tmax','fmin','fmax','etiqueta','score','estado'];
   const rows = state.matches.map(m => [
     state.file?.name || '',
-    m.tmin.toFixed(6), m.tmax.toFixed(6), m.fmin.toFixed(3), m.fmax.toFixed(3), m.score.toFixed(6), 'candidato'
+    m.tmin.toFixed(6),
+    m.tmax.toFixed(6),
+    m.fmin.toFixed(3),
+    m.fmax.toFixed(3),
+    cleanLabel(m.etiqueta || state.savedRoi?.etiqueta || currentEtiqueta()),
+    m.score.toFixed(6),
+    'candidato'
   ]);
   const csv = [header, ...rows].map(row => row.map(csvCell).join(',')).join('\n');
   const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = `embedding_matches_${Date.now()}.csv`;
-  document.body.appendChild(a);
-  a.click();
-  a.remove();
-  URL.revokeObjectURL(url);
-  showToast('CSV exportado', 'Se descargó la tabla de candidatos.');
+  downloadBlob(blob, `${getExportBaseName()}.csv`);
+  showToast('CSV exportado', 'Se descargó la tabla de candidatos con la etiqueta.');
 }
 
 
 function exportXlsx() {
   if (!state.matches.length) return;
-  const header = ['audio','tmin','tmax','fmin','fmax','score','estado'];
+  const header = ['audio','tmin','tmax','fmin','fmax','etiqueta','score','estado'];
   const rows = state.matches.map(m => [
     state.file?.name || '',
-    Number(m.tmin.toFixed(6)), Number(m.tmax.toFixed(6)), Number(m.fmin.toFixed(3)), Number(m.fmax.toFixed(3)), Number(m.score.toFixed(6)), 'candidato'
+    Number(m.tmin.toFixed(6)),
+    Number(m.tmax.toFixed(6)),
+    Number(m.fmin.toFixed(3)),
+    Number(m.fmax.toFixed(3)),
+    cleanLabel(m.etiqueta || state.savedRoi?.etiqueta || currentEtiqueta()),
+    Number(m.score.toFixed(6)),
+    'candidato'
   ]);
   const blob = makeXlsxBlob([header, ...rows]);
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = `embedding_matches_${Date.now()}.xlsx`;
-  document.body.appendChild(a);
-  a.click();
-  a.remove();
-  URL.revokeObjectURL(url);
-  showToast('XLSX exportado', 'Se descargó la tabla de candidatos.');
+  downloadBlob(blob, `${getExportBaseName()}.xlsx`);
+  showToast('XLSX exportado', 'Se descargó la tabla de candidatos con la etiqueta.');
+}
+
+function exportAudacityTxt() {
+  if (!state.matches.length) return;
+  const lines = [];
+  for (const m of state.matches) {
+    const etiqueta = cleanLabel(m.etiqueta || state.savedRoi?.etiqueta || currentEtiqueta());
+    lines.push(`${m.tmin.toFixed(6)}\t${m.tmax.toFixed(6)}\t${etiqueta}`);
+    lines.push(`\\\t${m.fmin.toFixed(6)}\t${m.fmax.toFixed(6)}`);
+  }
+  const txt = lines.join('\r\n') + '\r\n';
+  const blob = new Blob([txt], { type: 'text/plain;charset=utf-8' });
+  downloadBlob(blob, `${getExportBaseName()}.txt`);
+  showToast('TXT Audacity exportado', 'Se descargó el archivo de etiquetas en formato Audacity.');
 }
 
 function xmlEscape(value) {
@@ -953,6 +977,29 @@ function csvCell(value) {
   return s;
 }
 
+function cleanLabel(value) {
+  return String(value ?? '').replace(/[\t\r\n]+/g, ' ').trim();
+}
+
+function currentEtiqueta() {
+  return cleanLabel(el.roiLabel ? el.roiLabel.value : '');
+}
+
+function addEtiquetaToMatch(match, etiqueta) {
+  return { ...match, etiqueta: cleanLabel(etiqueta) };
+}
+
+function downloadBlob(blob, filename) {
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(url);
+}
+
 function applyRoiFromFields() {
   if (!state.display) return;
   setRoi({
@@ -972,7 +1019,7 @@ function saveRoi() {
     showToast('ROI inválida', 'La caja debe tener ancho temporal y alto frecuencial.');
     return;
   }
-  state.savedRoi = { ...state.roi };
+  state.savedRoi = { ...state.roi, etiqueta: currentEtiqueta() };
   el.btnSearch.disabled = false;
   setStatus('Plantilla guardada', 'Ajusta los parámetros y pulsa Buscar similares.');
   setCoach('Busca sonidos similares', 'Usa coseno como punto de partida. Si salen pocos candidatos, baja el score mínimo; si salen demasiados, súbelo.');
@@ -988,6 +1035,7 @@ function clearRoi() {
   el.roiTmax.value = 0;
   el.roiFmin.value = 0;
   el.roiFmax.value = 0;
+  if (el.roiLabel) el.roiLabel.value = '';
   el.roiSummary.textContent = 'Sin ROI.';
   el.matchSummary.textContent = 'Sin matches.';
   el.btnSaveRoi.disabled = true;
@@ -996,6 +1044,7 @@ function clearRoi() {
   el.btnClearMatches.disabled = true;
   el.btnExportCsv.disabled = true;
   if (el.btnExportXlsx) el.btnExportXlsx.disabled = true;
+  if (el.btnExportTxt) el.btnExportTxt.disabled = true;
   clearMatchesTable();
   drawOverlay();
   setStatus('Marca plantilla', 'Arrastra sobre el espectrograma para encerrar el patrón que quieres buscar.');
@@ -1005,6 +1054,7 @@ function clearRoi() {
 
 function searchEmbedding() {
   if (!state.savedRoi || !state.worker) return;
+  state.savedRoi.etiqueta = currentEtiqueta();
   const metric = el.metricSelect.value;
   const scoreThreshold = Number(el.scoreThreshold.value);
   const strideSec = Number(el.strideSec.value);
@@ -1026,6 +1076,7 @@ function clearMatches() {
   el.btnClearMatches.disabled = true;
   el.btnExportCsv.disabled = true;
   if (el.btnExportXlsx) el.btnExportXlsx.disabled = true;
+  if (el.btnExportTxt) el.btnExportTxt.disabled = true;
   clearMatchesTable();
   drawOverlay();
   showToast('Matches limpiados', 'Se retiraron las cajas azules.');
@@ -1104,6 +1155,7 @@ function attachEvents() {
   el.btnClearMatches.addEventListener('click', clearMatches);
   el.btnExportCsv.addEventListener('click', exportCsv);
   if (el.btnExportXlsx) el.btnExportXlsx.addEventListener('click', exportXlsx);
+  if (el.btnExportTxt) el.btnExportTxt.addEventListener('click', exportAudacityTxt);
   el.accordionPanels.forEach(panel => {
     const head = panel.querySelector('.accordion-head');
     if (head) head.addEventListener('click', () => togglePanel(panel.dataset.panel));

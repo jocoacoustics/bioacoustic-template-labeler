@@ -107,6 +107,9 @@
               <label>tmax <input id="roiTmax" type="number" step="0.001" value="0" /></label>
               <label>fmin <input id="roiFmin" type="number" step="1" value="0" /></label>
               <label>fmax <input id="roiFmax" type="number" step="1" value="0" /></label>
+              <label class="full-row">Etiqueta (opcional)
+                <input id="roiLabel" class="roi-label-input" type="text" placeholder="Ej. especie, código o clase" />
+              </label>
             </div>
             <div class="button-row">
               <button id="btnApplyRoi" class="btn btn-small" disabled>Aplicar ROI</button>
@@ -158,14 +161,15 @@
             <div class="results-actions">
               <button id="btnExportCsv" class="btn btn-small" disabled>Descargar CSV</button>
               <button id="btnExportXlsx" class="btn btn-small" disabled>Descargar XLSX</button>
+              <button id="btnExportTxt" class="btn btn-small" disabled>Descargar TXT Audacity</button>
             </div>
             <div class="table-wrap">
               <table id="matchesTable">
                 <thead>
-                  <tr><th>#</th><th>score</th><th>t</th></tr>
+                  <tr><th>#</th><th>score</th><th>t</th><th>etiqueta</th></tr>
                 </thead>
                 <tbody>
-                  <tr><td colspan="3" class="muted-cell">Sin resultados</td></tr>
+                  <tr><td colspan="4" class="muted-cell">Sin resultados</td></tr>
                 </tbody>
               </table>
             </div>

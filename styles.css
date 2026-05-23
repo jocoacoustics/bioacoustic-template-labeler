@@ -225,8 +225,9 @@ audio { width: 100%; min-width: 260px; display: block; }
 .coach-title { font-weight: 800; font-size: 17px; margin-bottom: 4px; }
 .coach-text { margin: 0; color: var(--muted); line-height: 1.45; font-size: 13px; }
 .field-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.field-grid .full-row { grid-column: 1 / -1; }
 .field-grid label, .control-label { display: flex; flex-direction: column; gap: 5px; font-size: 12px; color: var(--muted); font-weight: 700; }
-.field-grid input, select, .number-compact {
+.field-grid input, .control-label input:not([type="range"]), select, .number-compact {
   width: 100%;
   border: 1px solid var(--border);
   border-radius: 10px;
@@ -236,6 +237,12 @@ audio { width: 100%; min-width: 260px; display: block; }
 }
 .control-label { margin-top: 8px; }
 .control-label input[type="range"] { width: 100%; }
+.roi-label-input {
+  min-height: 38px;
+  box-shadow: inset 0 1px 0 rgba(15, 23, 42, 0.02);
+}
+.roi-label-input::placeholder { color: #94a3b8; }
+
 .slider-number-row { display: grid; grid-template-columns: minmax(0, 1fr) 92px; gap: 8px; align-items: center; }
 .number-compact { font-size: 12px; padding: 7px 8px; }
 .button-row, .results-actions { display: flex; gap: 8px; margin-top: 10px; }

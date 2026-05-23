@@ -28,3 +28,15 @@ También puedes publicar los archivos directamente en GitHub Pages. El archivo `
 - La configuración del espectrograma queda contraída por defecto.
 - El flujo tipo wizard abre/cierra secciones según la acción: marcar ROI, guardar plantilla, buscar y revisar resultados.
 - Exporta resultados en CSV y XLSX.
+
+
+## v9
+
+- Agrega campo **Etiqueta (opcional)** para la ROI.
+- La etiqueta se incluye en la tabla de resultados, CSV y XLSX.
+- Agrega exportación **TXT Audacity** con formato de dos líneas por etiqueta: `tmin\ttmax\tetiqueta` y `\\\tfmin\tfmax`.
+
+
+## Exportación
+
+Los archivos CSV, XLSX y TXT Audacity se descargan usando el mismo nombre base del audio original, cambiando solo la extensión.

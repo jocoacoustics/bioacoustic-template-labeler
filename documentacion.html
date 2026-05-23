@@ -295,7 +295,17 @@ python -m http.server 8000</code></pre>
       </section>
 
       <p class="footer">Proyecto web estático. Puede publicarse en GitHub Pages. El audio se procesa localmente en el navegador del usuario.</p>
-    </main>
+    
+<section id="exportacion-audacity">
+  <h2>Exportación TXT Audacity</h2>
+  <p>La versión v9 permite escribir una <strong>Etiqueta (opcional)</strong> al guardar la ROI. Esa etiqueta se propaga a los resultados y se exporta en CSV, XLSX y TXT.</p>
+  <p>El archivo TXT usa el formato de etiquetas de Audacity con dos líneas por evento:</p>
+  <pre><code>tmin	tmax	etiqueta
+\	fmin	fmax</code></pre>
+</section>
+
+</main>
   </div>
+<section><h2>Exportación de resultados</h2><p>Los archivos CSV, XLSX y TXT Audacity se descargan usando el mismo nombre base del audio original, cambiando solo la extensión. Si el audio se llama <code>audio.mp3</code>, las exportaciones serán <code>audio.csv</code>, <code>audio.xlsx</code> y <code>audio.txt</code>.</p></section>
 </body>
 </html>
