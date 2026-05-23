@@ -166,9 +166,9 @@
           <li>La aplicación decodifica el audio y construye el espectrograma automáticamente.</li>
           <li>Arrastra una caja roja sobre el patrón acústico que quieres usar como plantilla.</li>
           <li>Pulsa <strong>Guardar plantilla</strong>.</li>
-          <li>Ajusta <strong>score mínimo</strong>, <strong>stride temporal</strong> y <strong>métrica</strong>.</li>
+          <li>Ajusta o deja activo el <strong>autoajuste</strong> de score mínimo y separación entre ventanas.</li>
           <li>Pulsa <strong>Buscar similares</strong>.</li>
-          <li>Exporta los candidatos con <strong>Exportar CSV</strong>.</li>
+          <li>Exporta los candidatos como <strong>CSV</strong>, <strong>XLSX</strong> o <strong>TXT Audacity</strong>.</li>
         </ol>
         <div class="note">La construcción del espectrograma es automática después de subir el audio. No hay un botón separado para construirlo.</div>
       </section>
@@ -209,6 +209,8 @@ python -m http.server 8000</code></pre>
           <li><strong>Plantilla:</strong> la ROI se guarda como referencia.</li>
           <li><strong>Búsqueda:</strong> se comparan ventanas candidatas contra la plantilla.</li>
           <li><strong>Resultados:</strong> se dibujan cajas azules y se llena la tabla de candidatos.</li>
+        <p>La tabla de resultados puede ordenarse haciendo clic en los encabezados de columna. Por defecto, se mantiene el orden de mayor score primero.</p>
+
           <li><strong>Exportación:</strong> se descarga un CSV con las cajas candidatas.</li>
         </ol>
       </section>
@@ -241,45 +243,108 @@ python -m http.server 8000</code></pre>
         </ul>
         <h3>Búsqueda por embedding</h3>
         <ul>
-          <li><strong>Métrica:</strong> coseno o euclidiana.</li>
-          <li><strong>Score mínimo:</strong> umbral desde 0 hasta 0.99.</li>
-          <li><strong>Stride temporal:</strong> separación temporal entre ventanas candidatas.</li>
+          <li><strong>Métrica:</strong> coseno, correlación normalizada o euclidiana normalizada.</li>
+          <li><strong>Score mínimo:</strong> umbral desde 0 hasta 0.99. Valores altos son más estrictos; valores bajos muestran más coincidencias, pero pueden incluir ruido.</li>
+          <li><strong>Separación entre ventanas:</strong> cada cuántos segundos se prueba una nueva ventana candidata. Menor es más fino y lento; mayor es más rápido pero puede saltarse eventos.</li>
+          <li><strong>Autoajuste:</strong> al buscar, estima la separación según la duración de la ROI, convierte la curva densa de scores en picos/islas temporales, excluye la plantilla original para estimar el corte y usa barandas internas para evitar tanto cientos de cajas como una sola coincidencia cuando sí existen más candidatos razonables.</li>
         </ul>
       </section>
 
       <section id="matematica">
         <h2>Formulación matemática</h2>
-        <p>Sea $x[n]$ una señal de audio discreta. La aplicación calcula una transformada de Fourier de tiempo corto:</p>
+        <p>Esta sección describe el problema completo que resuelve la app: a partir de una plantilla marcada por el usuario en el espectrograma, se buscan eventos acústicos similares en el mismo audio.</p>
+
+        <h3>1. Señal y espectrograma</h3>
+        <p>Sea $x[n]$ una señal de audio discreta, donde $n$ indexa muestras. La aplicación calcula una transformada de Fourier de tiempo corto:</p>
         <p>$$X[k,m] = \sum_n x[n] w[n - mH] e^{-2\pi i k n / N}$$</p>
-        <p>donde $N$ es el tamaño de la ventana, $H$ es el salto entre ventanas, $w$ es la ventana de análisis, $k$ indexa frecuencia y $m$ indexa tiempo.</p>
-        <p>Luego se trabaja con la magnitud logarítmica:</p>
+        <p>donde:</p>
+        <ul>
+          <li>$N$ es el tamaño de la ventana de Fourier.</li>
+          <li>$H$ es el salto entre ventanas, también llamado <em>hop length</em>.</li>
+          <li>$w$ es la ventana de análisis.</li>
+          <li>$k$ indexa la frecuencia.</li>
+          <li>$m$ indexa el tiempo.</li>
+        </ul>
+        <p>Se trabaja con la magnitud logarítmica en decibeles:</p>
         <p>$$S[k,m] = 20\log_{10}(|X[k,m]| + \varepsilon)$$</p>
-        <p>Una ROI se define como:</p>
+        <p>Aquí $S$ es la matriz del espectrograma y $\varepsilon > 0$ evita problemas numéricos con logaritmos de cero.</p>
+
+        <h3>2. ROI o plantilla acústica</h3>
+        <p>El usuario dibuja una región de interés, o ROI, sobre el espectrograma:</p>
         <p>$$R = [t_{\min}, t_{\max}, f_{\min}, f_{\max}]$$</p>
-        <p>Esta ROI se convierte a índices del espectrograma y extrae un patch:</p>
-        <p>$$P = S[i_{f0}:i_{f1}, i_{t0}:i_{t1}]$$</p>
-        <p>El patch se normaliza localmente:</p>
+        <p>donde $t_{\min}$ y $t_{\max}$ son los límites temporales en segundos, y $f_{\min}$ y $f_{\max}$ son los límites de frecuencia en Hz.</p>
+        <p>La ROI se convierte a índices discretos del espectrograma:</p>
+        <p>$$R \rightarrow [i_{f0}, i_{f1}, i_{t0}, i_{t1}]$$</p>
+        <p>y se extrae el patch de plantilla:</p>
+        <p>$$P_R = S[i_{f0}:i_{f1}, i_{t0}:i_{t1}]$$</p>
+        <p>La duración de la plantilla es:</p>
+        <p>$$T_R = t_{\max} - t_{\min}$$</p>
+
+        <h3>3. Embedding del patch</h3>
+        <p>Cada patch se normaliza localmente para reducir el efecto de intensidad absoluta:</p>
         <p>$$P_{\text{norm}} = \frac{P - \min(P)}{\max(P) - \min(P) + \varepsilon}$$</p>
-        <p>Después se redimensiona a $48 \times 48$ y se aplana:</p>
+        <p>Luego se redimensiona a $48 \times 48$ y se aplana:</p>
         <p>$$z = \operatorname{vec}(\operatorname{resize}(P_{\text{norm}}, 48, 48))$$</p>
-        <p>Como $48 \times 48 = 2304$, cada patch queda representado por un vector de 2304 dimensiones. Luego se estandariza y normaliza:</p>
+        <p>Como $48 \times 48 = 2304$, cada patch queda representado inicialmente por un vector $z \in \mathbb{R}^{2304}$.</p>
+        <p>Después se estandariza y se normaliza con norma euclidiana:</p>
         <p>$$\tilde{z} = \frac{z - \mu_z}{\sigma_z + \varepsilon}$$</p>
         <p>$$e = \frac{\tilde{z}}{\|\tilde{z}\|_2 + \varepsilon}$$</p>
-        <p>Para cada ventana candidata $C_j$ se calcula su embedding $e_j$. Con similitud coseno:</p>
-        <p>$$\operatorname{score}(R, C_j) = e_R^\top e_j$$</p>
-        <p>Con distancia euclidiana normalizada:</p>
-        <p>$$d(R, C_j) = \|e_R - e_j\|_2$$</p>
-        <p>$$\operatorname{score}(R, C_j) = 1 - \frac{d(R, C_j)}{2}$$</p>
-        <p>Una ventana se conserva si:</p>
-        <p>$$\operatorname{score}(R, C_j) \geq \tau$$</p>
-        <p>donde $\tau$ es el score mínimo seleccionado por el usuario.</p>
+        <p>El vector $e$ es el embedding usado para comparar la plantilla con otras ventanas del audio.</p>
+
+        <h3>4. Ventanas candidatas y scores</h3>
+        <p>La aplicación recorre el audio con ventanas candidatas del mismo tamaño temporal y frecuencial que la ROI. Si la separación entre ventanas es $\Delta t$, se evalúan ventanas en tiempos:</p>
+        <p>$$t_j = j\Delta t$$</p>
+        <p>Para cada ventana candidata $C_j$ se extrae un patch $P_j$, se calcula su embedding $e_j$ y se obtiene un score de similitud:</p>
+        <p>$$s_j = \operatorname{score}(R, C_j)$$</p>
+        <p>La app mantiene todas las métricas en una escala común de 0 a 1, donde 1 indica mayor parecido.</p>
+        <p>Para coseno y correlación normalizada se usa:</p>
+        <p>$$s_j = \max(0, e_R^\top e_j)$$</p>
+        <p>Para distancia euclidiana normalizada:</p>
+        <p>$$d_j = \|e_R - e_j\|_2$$</p>
+        <p>$$s_j = \max\left(0, 1 - \frac{d_j}{2}\right)$$</p>
+        <p>Como los embeddings están normalizados, esta transformación permite interpretar también la métrica euclidiana como un score entre 0 y 1.</p>
+
+        <h3>5. De ventanas a eventos</h3>
+        <p>Las ventanas evaluadas no son todavía eventos finales. Muchas ventanas consecutivas pueden representar el mismo sonido. Por eso se agrupan candidatos cercanos y se conserva solo el mejor score de cada grupo temporal.</p>
+        <p>Si $w_R$ es el ancho de la plantilla en frames, se define una separación mínima interna entre eventos:</p>
+        <p>$$\Delta_{\text{evento}} = \gamma w_R$$</p>
+        <p>donde $\gamma$ es una constante interna. En la práctica esto evita que un solo evento acústico genere muchas cajas repetidas.</p>
+        <p>Después de esta supresión temporal, se obtiene una lista de picos o islas:</p>
+        <p>$$P = \{p_1, p_2, \dots, p_M\}$$</p>
+        <p>donde cada $p_i$ tiene un score $s_i$ y representa un candidato temporalmente separado.</p>
+
+        <h3>6. Autoajuste de parámetros</h3>
+        <p>Cuando está activo <strong>Autoajustar parámetros al buscar</strong>, la app estima automáticamente dos valores: la separación entre ventanas $\Delta t$ y el score mínimo $\tau$.</p>
+        <p>La separación entre ventanas se propone a partir de la duración de la ROI:</p>
+        <p>$$\Delta t = \operatorname{clip}(\alpha T_R, \Delta t_{\min}, \Delta t_{\max})$$</p>
+        <p>donde $\alpha$ es una fracción interna y $\operatorname{clip}$ limita el valor para que no sea ni demasiado fino ni demasiado grande.</p>
+        <p>Para estimar el score mínimo, primero se excluye la zona de la plantilla original al calcular el corte automático, de modo que el match trivial de la propia ROI no domine el umbral. Luego se ordenan los scores de los picos:</p>
+        <p>$$s_{(1)} \geq s_{(2)} \geq \dots \geq s_{(M)}$$</p>
+        <p>El umbral automático combina varias señales:</p>
+        <ul>
+          <li>un umbral de codo $\tau_{\text{codo}}$, obtenido de la curva de scores ordenados;</li>
+          <li>un umbral robusto de fondo $\tau_{\text{ruido}}$, basado en mediana y dispersión robusta;</li>
+          <li>un umbral relativo $\tau_{\text{rel}}$, definido como una fracción del mejor score;</li>
+          <li>barandas internas para evitar dos extremos: cientos de cajas o una sola caja si hay más candidatos razonables.</li>
+        </ul>
+        <p>Conceptualmente:</p>
+        <p>$$\tau_0 = \max(\tau_{\text{codo}}, \tau_{\text{ruido}}, \tau_{\text{rel}}, \tau_{\min})$$</p>
+        <p>Luego se ajusta $\tau_0$ usando límites internos de cantidad:</p>
+        <p>$$N_{\min}^{\text{objetivo}} \leq N(\tau) \leq N_{\max}^{\text{auto}}$$</p>
+        <p>donde $N(\tau)$ es el número de picos con score mayor o igual a $\tau$. Estos límites son objetivos, no reglas para inventar resultados. Si no existen suficientes coincidencias razonables, la app muestra las que existan.</p>
+        <p>Finalmente se conservan los eventos que cumplen:</p>
+        <p>$$s_i \geq \tau$$</p>
+        <p>Cuando termina una búsqueda con autoajuste, la casilla de autoajuste se desmarca automáticamente. Así los ajustes manuales posteriores de score y separación sí tienen efecto inmediato. Al subir un nuevo audio, la casilla vuelve a quedar activa.</p>
+
+        <h3>7. Interpretación</h3>
+        <p>Las cajas azules son candidatos similares a la plantilla, no identificaciones taxonómicas definitivas. El flujo recomendado es usar la búsqueda automática como primer filtro, revisar visualmente los candidatos y exportar los resultados para validación posterior.</p>
       </section>
 
       <section id="exportacion">
-        <h2>Exportación CSV</h2>
-        <p>El CSV exportado contiene candidatos detectados por similitud:</p>
-        <pre><code>audio,tmin,tmax,fmin,fmax,score,estado</code></pre>
-        <p>Estos resultados son candidatos, no validaciones definitivas. Una fase posterior puede agregar revisión manual, aceptar/rechazar y entrenamiento supervisado.</p>
+        <h2>Exportación</h2>
+        <p>Los resultados pueden descargarse como CSV, XLSX o TXT compatible con etiquetas espectrales de Audacity. El nombre base de exportación coincide con el nombre del audio subido.</p>
+        <pre><code>audio,tmin,tmax,fmin,fmax,etiqueta,score,estado</code></pre>
+        <p>El TXT Audacity usa dos líneas por coincidencia: una para tiempos y etiqueta, y otra para la banda de frecuencia. Estos resultados son candidatos, no validaciones definitivas.</p>
       </section>
 
       <section id="problemas">

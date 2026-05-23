@@ -28,6 +28,7 @@ const state = {
   roi: null,
   savedRoi: null,
   matches: [],
+  tableSort: { key: 'score', dir: 'desc' },
   worker: null,
   dragging: false,
   moved: false,
@@ -86,6 +87,8 @@ const el = {
   scoreThresholdInput: document.getElementById('scoreThresholdInput'),
   strideSec: document.getElementById('strideSec'),
   strideSecInput: document.getElementById('strideSecInput'),
+  autoAdjustParams: document.getElementById('autoAdjustParams'),
+  infoDots: Array.from(document.querySelectorAll('.info-dot')),
   btnSearch: document.getElementById('btnSearch'),
   btnClearMatches: document.getElementById('btnClearMatches'),
   matchSummary: document.getElementById('matchSummary'),
@@ -184,8 +187,17 @@ function openSearchStep() {
 }
 
 function openResultsStep() {
-  setPanelOpen('search', false);
+  // Después de buscar, mantenemos el panel de búsqueda abierto para que
+  // el usuario pueda afinar score/separación sin perder de vista resultados.
+  setPanelOpen('roi', false);
+  setPanelOpen('search', true);
   setPanelOpen('results', true);
+  const searchPanel = panelByName('search');
+  if (searchPanel && typeof searchPanel.scrollIntoView === 'function') {
+    window.setTimeout(() => {
+      searchPanel.scrollIntoView({ block: 'start', behavior: 'smooth' });
+    }, 60);
+  }
 }
 
 function escapeHtml(value) {
@@ -220,7 +232,8 @@ function resetForNewAudio() {
   el.roiFmax.value = 0;
   if (el.roiLabel) el.roiLabel.value = '';
   el.roiSummary.textContent = 'Sin ROI.';
-  el.matchSummary.textContent = 'Sin matches.';
+  el.matchSummary.textContent = 'Sin coincidencias.';
+  if (el.autoAdjustParams) el.autoAdjustParams.checked = true;
   el.spectrogramTitle.textContent = state.file ? `Espectrograma · ${state.file.name}` : 'Sin espectrograma';
   el.btnApplyRoi.disabled = true;
   el.btnSaveRoi.disabled = true;
@@ -309,6 +322,14 @@ function onWorkerMessage(ev) {
 
   if (msg.type === 'search-ready') {
     hideProcessing();
+    if (msg.auto) {
+      if (Number.isFinite(msg.auto.scoreThreshold)) setScoreControls(msg.auto.scoreThreshold);
+      if (Number.isFinite(msg.auto.strideSec)) setStrideControls(msg.auto.strideSec);
+      // El autoajuste sirve para la primera propuesta. Luego se desactiva
+      // para que los cambios manuales de score/separación sí tengan efecto
+      // en búsquedas finas posteriores. Al subir un nuevo audio se reactiva.
+      if (el.autoAdjustParams) el.autoAdjustParams.checked = false;
+    }
     const etiqueta = cleanLabel(state.savedRoi?.etiqueta ?? currentEtiqueta());
     state.matches = (msg.matches || []).map(m => addEtiquetaToMatch(m, etiqueta));
     drawOverlay();
@@ -317,12 +338,13 @@ function onWorkerMessage(ev) {
     el.btnExportCsv.disabled = state.matches.length === 0;
     if (el.btnExportXlsx) el.btnExportXlsx.disabled = state.matches.length === 0;
     if (el.btnExportTxt) el.btnExportTxt.disabled = state.matches.length === 0;
+    const autoNote = msg.auto ? ` Auto: score ${msg.auto.scoreThreshold.toFixed(3)}, separación ${msg.auto.strideSec.toFixed(2)} s.` : '';
     el.matchSummary.textContent = state.matches.length
-      ? `${state.matches.length} matches encontrados. Mejor score: ${state.matches[0].score.toFixed(3)}.`
-      : 'No hubo matches con ese umbral.';
-    setStatus('Revisa resultados', state.matches.length ? 'Las cajas azules son candidatos similares a la plantilla.' : 'Baja el score o cambia el ROI si no aparecen matches.');
-    setCoach('Revisa los candidatos', state.matches.length ? 'Haz clic en una fila de la tabla para centrar el audio y el espectrograma en ese match.' : 'No aparecieron candidatos. Prueba bajar el score mínimo o marca una ROI más ajustada.');
-    showToast('Búsqueda terminada', state.matches.length ? `Encontré ${state.matches.length} candidatos.` : 'No encontré candidatos con ese umbral.');
+      ? `${state.matches.length} coincidencias encontradas. Mejor score: ${state.matches[0].score.toFixed(3)}.${autoNote}`
+      : `No hubo coincidencias con ese umbral.${autoNote}`;
+    setStatus('Revisa resultados', state.matches.length ? 'Las cajas azules son candidatos similares a la plantilla.' : 'Baja el score o cambia el ROI si no aparecen coincidencias.');
+    setCoach('Revisa los candidatos', state.matches.length ? 'Haz clic en una fila de la tabla para centrar el audio y el espectrograma en esa coincidencia.' : 'No aparecieron candidatos. Prueba bajar el score mínimo o marca una ROI más ajustada.');
+    showToast('Búsqueda terminada', state.matches.length ? `Encontré ${state.matches.length} coincidencias.` : 'No encontré coincidencias con ese umbral.');
     openResultsStep();
     return;
   }
@@ -791,20 +813,60 @@ function stopAnimationLoop() {
 }
 
 function clearMatchesTable() {
-  el.matchesTable.querySelector('tbody').innerHTML = '<tr><td colspan="4" class="muted-cell">Sin resultados</td></tr>';
+  el.matchesTable.querySelector('tbody').innerHTML = '<tr><td colspan="7" class="muted-cell">Sin resultados</td></tr>';
+}
+
+function sortMatchesForTable(matches) {
+  const key = state.tableSort?.key || 'score';
+  const dir = state.tableSort?.dir === 'asc' ? 1 : -1;
+  const arr = matches.map((m, idx) => ({ ...m, _rank: idx + 1 }));
+  const valueFor = (m) => {
+    if (key === 'rank') return m._rank;
+    if (key === 'etiqueta') return String(m.etiqueta || '').toLowerCase();
+    return Number(m[key]);
+  };
+  arr.sort((a, b) => {
+    const va = valueFor(a);
+    const vb = valueFor(b);
+    if (typeof va === 'string' || typeof vb === 'string') {
+      return String(va).localeCompare(String(vb)) * dir;
+    }
+    const na = Number.isFinite(va) ? va : -Infinity;
+    const nb = Number.isFinite(vb) ? vb : -Infinity;
+    if (na === nb) return a._rank - b._rank;
+    return (na - nb) * dir;
+  });
+  return arr;
+}
+
+function updateTableSortIndicators() {
+  const ths = el.matchesTable.querySelectorAll('th.sortable');
+  ths.forEach(th => {
+    th.classList.remove('sort-asc', 'sort-desc');
+    const base = th.dataset.label || th.textContent.replace(/[▲▼]/g, '').trim();
+    th.dataset.label = base;
+    if (th.dataset.sort === state.tableSort.key) {
+      th.classList.add(state.tableSort.dir === 'asc' ? 'sort-asc' : 'sort-desc');
+      th.textContent = `${base} ${state.tableSort.dir === 'asc' ? '▲' : '▼'}`;
+    } else {
+      th.textContent = base;
+    }
+  });
 }
 
 function renderMatchesTable() {
   const tbody = el.matchesTable.querySelector('tbody');
+  updateTableSortIndicators();
   if (!state.matches.length) {
     clearMatchesTable();
+    updateTableSortIndicators();
     return;
   }
   tbody.innerHTML = '';
-  state.matches.slice(0, 80).forEach((m, i) => {
+  sortMatchesForTable(state.matches).slice(0, 80).forEach((m) => {
     const tr = document.createElement('tr');
     tr.className = 'match-row';
-    tr.innerHTML = `<td>${i + 1}</td><td>${m.score.toFixed(3)}</td><td>${m.tmin.toFixed(2)}-${m.tmax.toFixed(2)}</td><td>${escapeHtml(m.etiqueta || '')}</td>`;
+    tr.innerHTML = `<td>${m._rank}</td><td>${m.score.toFixed(3)}</td><td>${m.tmin.toFixed(2)}</td><td>${m.tmax.toFixed(2)}</td><td>${m.fmin.toFixed(0)}</td><td>${m.fmax.toFixed(0)}</td><td>${escapeHtml(m.etiqueta || '')}</td>`;
     tr.addEventListener('click', () => {
       el.audioPlayer.currentTime = m.tmin;
       updatePlayhead(true);
@@ -1022,8 +1084,8 @@ function saveRoi() {
   state.savedRoi = { ...state.roi, etiqueta: currentEtiqueta() };
   el.btnSearch.disabled = false;
   setStatus('Plantilla guardada', 'Ajusta los parámetros y pulsa Buscar similares.');
-  setCoach('Busca sonidos similares', 'Usa coseno como punto de partida. Si salen pocos candidatos, baja el score mínimo; si salen demasiados, súbelo.');
-  showToast('Plantilla guardada', 'Ahora puedes buscar regiones similares por embedding.');
+  setCoach('Busca similares', 'Puedes dejar activo el autoajuste para proponer score mínimo y separación entre ventanas según esta ROI.');
+  showToast('Plantilla guardada', 'Ahora puedes buscar similares por embedding.');
   openSearchStep();
 }
 
@@ -1037,7 +1099,7 @@ function clearRoi() {
   el.roiFmax.value = 0;
   if (el.roiLabel) el.roiLabel.value = '';
   el.roiSummary.textContent = 'Sin ROI.';
-  el.matchSummary.textContent = 'Sin matches.';
+  el.matchSummary.textContent = 'Sin coincidencias.';
   el.btnSaveRoi.disabled = true;
   el.btnClearRoi.disabled = true;
   el.btnSearch.disabled = true;
@@ -1058,28 +1120,48 @@ function searchEmbedding() {
   const metric = el.metricSelect.value;
   const scoreThreshold = Number(el.scoreThreshold.value);
   const strideSec = Number(el.strideSec.value);
-  showProcessing('Buscando similares', 'Comparando embeddings...', 10);
-  setStatus('Buscando', 'Procesando candidatos en segundo plano.');
+  const autoAdjust = Boolean(el.autoAdjustParams?.checked);
+  showProcessing(
+    autoAdjust ? 'Autoajustando y buscando similares' : 'Buscando similares',
+    autoAdjust ? 'Estimando separación y codo de scores...' : 'Comparando embeddings...',
+    10
+  );
+  setStatus('Buscando', autoAdjust ? 'Autoajustando parámetros y procesando candidatos.' : 'Procesando candidatos en segundo plano.');
   state.worker.postMessage({
     type: 'search-embedding',
     roi: state.savedRoi,
     metric,
     scoreThreshold,
     strideSec,
+    autoAdjust,
     maxMatches: CONFIG.maxMatchesToStore,
   });
 }
 
 function clearMatches() {
   state.matches = [];
-  el.matchSummary.textContent = 'Sin matches.';
+  el.matchSummary.textContent = 'Sin coincidencias.';
   el.btnClearMatches.disabled = true;
   el.btnExportCsv.disabled = true;
   if (el.btnExportXlsx) el.btnExportXlsx.disabled = true;
   if (el.btnExportTxt) el.btnExportTxt.disabled = true;
   clearMatchesTable();
   drawOverlay();
-  showToast('Matches limpiados', 'Se retiraron las cajas azules.');
+  showToast('Coincidencias limpiadas', 'Se retiraron las cajas azules.');
+}
+
+function setScoreControls(value) {
+  const v = clamp(Number(value), 0, 0.99);
+  const formatted = v.toFixed(3);
+  el.scoreThreshold.value = formatted;
+  el.scoreThresholdInput.value = formatted;
+}
+
+function setStrideControls(value) {
+  const v = clamp(Number(value), 0.01, 1.00);
+  const formatted = v.toFixed(2);
+  el.strideSec.value = formatted;
+  el.strideSecInput.value = formatted;
 }
 
 function syncRangeNumber(rangeEl, numberEl, decimals, minValue, maxValue) {
@@ -1159,6 +1241,26 @@ function attachEvents() {
   el.accordionPanels.forEach(panel => {
     const head = panel.querySelector('.accordion-head');
     if (head) head.addEventListener('click', () => togglePanel(panel.dataset.panel));
+  });
+  el.matchesTable.querySelectorAll('th.sortable').forEach(th => {
+    th.addEventListener('click', () => {
+      const key = th.dataset.sort;
+      if (!key) return;
+      if (state.tableSort.key === key) {
+        state.tableSort.dir = state.tableSort.dir === 'asc' ? 'desc' : 'asc';
+      } else {
+        state.tableSort.key = key;
+        state.tableSort.dir = key === 'etiqueta' ? 'asc' : 'desc';
+      }
+      renderMatchesTable();
+    });
+  });
+  el.infoDots.forEach(dot => {
+    dot.addEventListener('click', (ev) => {
+      ev.preventDefault();
+      ev.stopPropagation();
+      showToast('Ayuda', dot.dataset.tip || dot.getAttribute('title') || 'Sin descripción.', 9000);
+    });
   });
   window.addEventListener('resize', () => { layoutSpectrogramStage(); drawAxes(); drawOverlay(); updatePlayhead(false); });
   if (el.freqScaleSelect) el.freqScaleSelect.addEventListener('change', applySpectrogramSettings);

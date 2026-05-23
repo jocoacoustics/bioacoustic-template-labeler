@@ -126,29 +126,35 @@
             <span class="accordion-icon">▾</span>
           </button>
           <div class="accordion-content">
-            <label class="control-label">Métrica
+            <label class="control-label"><span class="label-row">Métrica <button type="button" class="info-dot" data-tip="Define cómo se compara la plantilla con cada ventana candidata. Coseno/correlación comparan forma; euclidiana normalizada compara distancia convertida a similitud.">i</button></span>
               <select id="metricSelect">
                 <option value="coseno" selected>coseno</option>
-                <option value="euclidiana">euclidiana</option>
+                <option value="correlacion">correlación normalizada</option>
+                <option value="euclidiana">euclidiana normalizada</option>
               </select>
             </label>
-            <label class="control-label">Score mínimo
+            <label class="control-label"><span class="label-row">Score mínimo <button type="button" class="info-dot" data-tip="Umbral de similitud entre 0 y 1. Más alto = menos coincidencias, más estrictas. Más bajo = más coincidencias, pero puede incluir ruido.">i</button></span>
               <div class="slider-number-row">
                 <input id="scoreThreshold" type="range" min="0" max="0.99" step="0.001" value="0.85" />
                 <input id="scoreThresholdInput" class="number-compact" type="number" min="0" max="0.99" step="0.001" value="0.85" />
               </div>
             </label>
-            <label class="control-label">Stride temporal (s)
+            <label class="control-label"><span class="label-row">Separación entre ventanas (s) <button type="button" class="info-dot" data-tip="Cada cuántos segundos se prueba una nueva ventana. Menor = búsqueda más fina y lenta. Mayor = búsqueda más rápida, pero puede saltarse eventos cortos.">i</button></span>
               <div class="slider-number-row">
                 <input id="strideSec" type="range" min="0.01" max="1.00" step="0.01" value="0.10" />
                 <input id="strideSecInput" class="number-compact" type="number" min="0.01" max="1.00" step="0.01" value="0.10" />
               </div>
             </label>
+            <label class="checkline auto-adjust-row">
+              <input id="autoAdjustParams" type="checkbox" checked />
+              Autoajustar parámetros al buscar
+              <button type="button" class="info-dot" data-tip="Antes de buscar, estima la separación según la duración de la ROI y propone el score mínimo usando el codo de la curva de similitudes. Puedes desactivarlo para usar valores manuales.">i</button>
+            </label>
             <div class="button-row">
               <button id="btnSearch" class="btn btn-success" disabled>Buscar similares</button>
               <button id="btnClearMatches" class="btn btn-ghost" disabled>Limpiar</button>
             </div>
-            <div id="matchSummary" class="mini-summary">Sin matches.</div>
+            <div id="matchSummary" class="mini-summary">Sin coincidencias.</div>
           </div>
         </section>
 
@@ -166,10 +172,18 @@
             <div class="table-wrap">
               <table id="matchesTable">
                 <thead>
-                  <tr><th>#</th><th>score</th><th>t</th><th>etiqueta</th></tr>
+                  <tr>
+                    <th class="sortable" data-sort="rank">#</th>
+                    <th class="sortable" data-sort="score">score</th>
+                    <th class="sortable" data-sort="tmin">tmin</th>
+                    <th class="sortable" data-sort="tmax">tmax</th>
+                    <th class="sortable" data-sort="fmin">fmin</th>
+                    <th class="sortable" data-sort="fmax">fmax</th>
+                    <th class="sortable" data-sort="etiqueta">etiqueta</th>
+                  </tr>
                 </thead>
                 <tbody>
-                  <tr><td colspan="4" class="muted-cell">Sin resultados</td></tr>
+                  <tr><td colspan="7" class="muted-cell">Sin resultados</td></tr>
                 </tbody>
               </table>
             </div>

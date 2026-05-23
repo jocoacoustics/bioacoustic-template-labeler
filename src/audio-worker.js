@@ -17,6 +17,12 @@ let STORE = {
 
 const EPS = 1e-12;
 
+// Barandas internas del autoajuste. No inventan coincidencias:
+// solo evitan que el umbral automático se vaya a extremos absurdos.
+const AUTO_TARGET_MIN_MATCHES = 3;
+const AUTO_TARGET_MAX_MATCHES = 30;
+const AUTO_ABSOLUTE_FLOOR = 0.45;
+
 self.onmessage = (ev) => {
   const msg = ev.data;
   if (!msg || !msg.type) return;
@@ -316,51 +322,105 @@ function searchEmbedding(msg) {
   if (!STORE.Sdb) throw new Error('No hay espectrograma en memoria.');
   const roi = msg.roi;
   const metric = msg.metric || 'coseno';
-  const threshold = Number(msg.scoreThreshold ?? 0.85);
-  const strideSec = Number(msg.strideSec ?? 0.10);
+  const autoAdjust = Boolean(msg.autoAdjust);
+  let threshold = Number(msg.scoreThreshold ?? 0.85);
+  let strideSec = Number(msg.strideSec ?? 0.10);
   const maxMatches = Number(msg.maxMatches ?? 500);
   const idx = roiToIndices(roi);
   const [iF0, iF1, iT0, iT1] = idx;
   const h = iF1 - iF0;
   const w = iT1 - iT0;
   if (h < 4 || w < 4) throw new Error(`ROI demasiado pequeño: ${h} x ${w}`);
-  postSearchProgress('Extrayendo embedding de la plantilla...', 12);
+
+  const roiDuration = Math.max(0.001, roi.tmax - roi.tmin);
+  if (autoAdjust) {
+    strideSec = autoStrideFromDuration(roiDuration);
+  }
+
+  postSearchProgress(autoAdjust ? 'Autoajustando separación entre ventanas...' : 'Extrayendo embedding de la plantilla...', 12);
   const template = extractPatch(iF0, iF1, iT0, iT1);
   const templateEmb = patchToEmbedding(template, h, w, 48);
   const strideFrames = Math.max(1, Math.round(strideSec * STORE.sampleRate / STORE.hopLength));
   const nPositions = STORE.nFrames - w + 1;
   const totalSteps = Math.ceil(nPositions / strideFrames);
-  const matches = [];
+  const candidates = [];
   const progressEvery = Math.max(1, Math.floor(totalSteps / 50));
   let stepIndex = 0;
+
   for (let col0 = 0; col0 < nPositions; col0 += strideFrames) {
     const candidate = extractPatch(iF0, iF1, col0, col0 + w);
     const emb = patchToEmbedding(candidate, h, w, 48);
     const score = similarity(templateEmb, emb, metric);
-    if (score >= threshold) {
-      matches.push({
-        tmin: frameToTime(col0),
-        tmax: frameToTime(Math.min(STORE.nFrames - 1, col0 + w - 1)),
-        fmin: STORE.freqs[iF0],
-        fmax: STORE.freqs[Math.min(STORE.nFreq - 1, iF1 - 1)],
-        score,
-        i_f0: iF0,
-        i_f1: iF1,
-        i_t0: col0,
-        i_t1: col0 + w,
-      });
-    }
+    candidates.push({
+      tmin: frameToTime(col0),
+      tmax: frameToTime(Math.min(STORE.nFrames - 1, col0 + w - 1)),
+      fmin: STORE.freqs[iF0],
+      fmax: STORE.freqs[Math.min(STORE.nFreq - 1, iF1 - 1)],
+      score,
+      i_f0: iF0,
+      i_f1: iF1,
+      i_t0: col0,
+      i_t1: col0 + w,
+    });
+
     if (stepIndex % progressEvery === 0) {
-      const pct = 15 + Math.round((stepIndex / Math.max(1, totalSteps)) * 75);
+      const pct = 15 + Math.round((stepIndex / Math.max(1, totalSteps)) * 70);
       postSearchProgress(`Comparando embeddings... ${stepIndex.toLocaleString()} / ${totalSteps.toLocaleString()}`, pct);
     }
     stepIndex++;
   }
-  postSearchProgress('Quitando duplicados cercanos...', 94);
-  const kept = nmsTime(matches, Math.max(1, Math.round(w * 0.5))).slice(0, maxMatches);
-  self.postMessage({ type: 'search-ready', matches: kept });
-}
 
+  postSearchProgress(autoAdjust ? 'Detectando picos/islas y estimando umbral...' : 'Quitando duplicados cercanos...', 88);
+
+  const validCandidates = candidates.filter(m => Number.isFinite(m.score) && m.score > 0);
+  const manualSepFrames = Math.max(1, Math.round(w * 0.5));
+  const autoSepFrames = autoMinSeparationFrames(w, roiDuration);
+  const minSepFrames = autoAdjust ? autoSepFrames : manualSepFrames;
+
+  // Primero convertimos la curva densa de scores en eventos/picos temporales.
+  // Esto evita que ventanas consecutivas de un mismo evento generen decenas de cajas.
+  const rankedAll = nmsTime(validCandidates, minSepFrames);
+
+  let auto = null;
+  let rankedForThreshold = rankedAll;
+  let targetMin = null;
+  let targetMax = null;
+  if (autoAdjust) {
+    targetMin = AUTO_TARGET_MIN_MATCHES;
+    targetMax = autoTargetMaxMatches(STORE.duration);
+
+    // Para estimar el umbral no dejamos que la propia plantilla marcada domine el cálculo.
+    // La plantilla sí puede aparecer luego como match si supera el umbral final.
+    rankedForThreshold = rankedAll.filter(m => !overlapsTemplate(m, iT0, iT1, 0.35));
+    if (rankedForThreshold.length === 0) rankedForThreshold = rankedAll;
+
+    const estimate = estimateAutoThreshold(rankedForThreshold.map(m => m.score), {
+      targetMin,
+      targetMax,
+      absoluteFloor: AUTO_ABSOLUTE_FLOOR,
+    });
+    threshold = estimate.threshold;
+    auto = {
+      scoreThreshold: threshold,
+      strideSec,
+      method: 'picos + codo robusto + límites de candidatos',
+      candidatesEvaluated: candidates.length,
+      rankedCandidates: rankedAll.length,
+      rankedForThreshold: rankedForThreshold.length,
+      targetMinMatches: targetMin,
+      targetMaxMatches: targetMax,
+      minSeparationSec: framesToSeconds(minSepFrames),
+      elbowThreshold: estimate.elbow,
+      noiseThreshold: estimate.noise,
+      relativeThreshold: estimate.relative,
+      countAtThreshold: estimate.countAtThreshold,
+    };
+  }
+
+  const limit = autoAdjust ? Math.min(maxMatches, targetMax || AUTO_TARGET_MAX_MATCHES) : maxMatches;
+  const kept = rankedAll.filter(m => m.score >= threshold).slice(0, limit);
+  self.postMessage({ type: 'search-ready', matches: kept, auto });
+}
 function roiToIndices(roi) {
   let iT0 = Math.floor((roi.tmin * STORE.sampleRate) / STORE.hopLength);
   let iT1 = Math.ceil((roi.tmax * STORE.sampleRate) / STORE.hopLength);
@@ -435,17 +495,176 @@ function patchToEmbedding(patch, h, w, outSize) {
 }
 
 function similarity(a, b, metric) {
-  if (metric === 'coseno') {
+  if (metric === 'coseno' || metric === 'correlacion') {
     let dot = 0;
     for (let i = 0; i < a.length; i++) dot += a[i] * b[i];
-    return dot;
+    // Los embeddings ya están centrados y normalizados. Para la interfaz usamos score 0-1.
+    return clamp01(dot);
   }
   let d2 = 0;
   for (let i = 0; i < a.length; i++) {
     const d = a[i] - b[i];
     d2 += d * d;
   }
-  return 1 - (Math.sqrt(d2) / 2);
+  // Como los vectores están normalizados L2, la distancia máxima útil es cercana a 2.
+  return clamp01(1 - (Math.sqrt(d2) / 2));
+}
+
+function autoStrideFromDuration(durationSec) {
+  // Ventanas largas no necesitan pasos diminutos; ventanas cortas sí.
+  // El mínimo 0.05 s permite no saltarse eventos cortos, pero el agrupamiento posterior evita el efecto peine.
+  return clamp(0.15 * durationSec, 0.05, 0.30);
+}
+
+function framesToSeconds(frames) {
+  return (frames * STORE.hopLength) / STORE.sampleRate;
+}
+
+function secondsToFrames(sec) {
+  return Math.max(1, Math.round(sec * STORE.sampleRate / STORE.hopLength));
+}
+
+function autoMinSeparationFrames(templateWidthFrames, roiDurationSec) {
+  // Agrupa ventanas que representan el mismo evento acústico.
+  // Usamos al menos una duración de plantilla y nunca menos de 0.45 s.
+  const byTemplate = Math.round(templateWidthFrames * 1.0);
+  const bySeconds = secondsToFrames(Math.max(0.45, roiDurationSec * 0.85));
+  return Math.max(1, byTemplate, bySeconds);
+}
+
+function autoTargetMaxMatches(durationSec) {
+  // Límite para el modo automático, no límite técnico de dibujo.
+  // En clips cortos mantenemos pocos candidatos; en audios largos permitimos más,
+  // pero sin convertir el resultado en una nube de cajas.
+  return clampInt(Math.round(durationSec / 12), 8, AUTO_TARGET_MAX_MATCHES);
+}
+
+function percentileAsc(sortedAsc, p) {
+  if (!sortedAsc.length) return 0;
+  const q = clamp(p, 0, 1);
+  const idx = Math.min(sortedAsc.length - 1, Math.max(0, Math.floor((sortedAsc.length - 1) * q)));
+  return sortedAsc[idx];
+}
+
+function median(values) {
+  if (!values.length) return 0;
+  const a = [...values].sort((x, y) => x - y);
+  return percentileAsc(a, 0.5);
+}
+
+function mad(values, med) {
+  if (!values.length) return 0;
+  const deviations = values.map(v => Math.abs(v - med)).sort((x, y) => x - y);
+  return percentileAsc(deviations, 0.5);
+}
+
+function estimateElbowThreshold(scores) {
+  const clean = scores
+    .filter(v => Number.isFinite(v))
+    .map(v => clamp01(v))
+    .sort((a, b) => b - a);
+
+  if (clean.length === 0) return 0.85;
+  if (clean.length < 6) return clamp(clean[0] * 0.80, AUTO_ABSOLUTE_FLOOR, 0.95);
+
+  const top = clean.slice(0, Math.min(clean.length, 600));
+  const sMax = top[0];
+  const sMin = top[top.length - 1];
+
+  if (Math.abs(sMax - sMin) < 1e-6) return clamp(sMax * 0.80, AUTO_ABSOLUTE_FLOOR, 0.95);
+
+  // Distancia máxima a la recta entre el primer y último punto de la curva ordenada.
+  const x1 = 0, y1 = sMax;
+  const x2 = top.length - 1, y2 = sMin;
+  const den = Math.sqrt((y2 - y1) ** 2 + (x2 - x1) ** 2) || 1;
+  let bestIdx = 0;
+  let bestDist = -Infinity;
+  for (let i = 1; i < top.length - 1; i++) {
+    const x0 = i, y0 = top[i];
+    const dist = Math.abs((y2 - y1) * x0 - (x2 - x1) * y0 + x2 * y1 - y2 * x1) / den;
+    if (dist > bestDist) {
+      bestDist = dist;
+      bestIdx = i;
+    }
+  }
+
+  return clamp(top[bestIdx], AUTO_ABSOLUTE_FLOOR, 0.98);
+}
+
+function estimateAutoThreshold(scores, opts = {}) {
+  const targetMin = opts.targetMin ?? AUTO_TARGET_MIN_MATCHES;
+  const targetMax = opts.targetMax ?? AUTO_TARGET_MAX_MATCHES;
+  const absoluteFloor = opts.absoluteFloor ?? AUTO_ABSOLUTE_FLOOR;
+
+  const clean = scores
+    .filter(v => Number.isFinite(v))
+    .map(v => clamp01(v))
+    .sort((a, b) => b - a);
+
+  if (clean.length === 0) {
+    return {
+      threshold: 0.85,
+      elbow: 0.85,
+      noise: 0.85,
+      relative: 0.85,
+      countAtThreshold: 0,
+    };
+  }
+
+  const sMax = clean[0];
+  const ascending = [...clean].sort((a, b) => a - b);
+  const med = median(ascending);
+  const robustMad = mad(ascending, med);
+  const elbow = estimateElbowThreshold(clean);
+  const noise = clamp(med + 2.5 * robustMad, absoluteFloor, 0.98);
+  const relative = clamp(sMax * 0.75, absoluteFloor, 0.98);
+
+  // Umbral inicial: razonable, no pegado al máximo.
+  let threshold = Math.max(absoluteFloor, elbow, noise, relative);
+
+  // Si el umbral inicial deja demasiados candidatos, subimos hasta el corte de N_MAX.
+  if (clean.length >= targetMax) {
+    const cutMax = clean[Math.max(0, targetMax - 1)];
+    if (countAtOrAbove(clean, threshold) > targetMax) {
+      threshold = Math.max(threshold, cutMax);
+    }
+  }
+
+  // Si el umbral inicial deja menos de N_MIN, bajamos solo hasta donde existan
+  // candidatos razonables por encima del piso absoluto. No se inventan coincidencias.
+  if (clean.length >= targetMin) {
+    const cutMin = clean[Math.max(0, targetMin - 1)];
+    if (countAtOrAbove(clean, threshold) < targetMin && cutMin >= absoluteFloor) {
+      threshold = Math.min(threshold, cutMin);
+    }
+  }
+
+  threshold = clamp(threshold, absoluteFloor, 0.98);
+
+  return {
+    threshold,
+    elbow,
+    noise,
+    relative,
+    countAtThreshold: countAtOrAbove(clean, threshold),
+  };
+}
+
+function countAtOrAbove(sortedDesc, threshold) {
+  let n = 0;
+  for (const v of sortedDesc) {
+    if (v >= threshold) n++;
+    else break;
+  }
+  return n;
+}
+
+function overlapsTemplate(match, iT0, iT1, minOverlapRatio = 0.35) {
+  const a0 = match.i_t0;
+  const a1 = match.i_t1;
+  const overlap = Math.max(0, Math.min(a1, iT1) - Math.max(a0, iT0));
+  const templateWidth = Math.max(1, iT1 - iT0);
+  return (overlap / templateWidth) >= minOverlapRatio;
 }
 
 function nmsTime(matches, minSepFrames) {
@@ -488,5 +707,6 @@ function upperBound(arr, x) {
   return lo;
 }
 
+function clamp(x, a, b) { return Math.max(a, Math.min(b, x)); }
 function clamp01(x) { return Math.max(0, Math.min(1, x)); }
 function clampInt(x, a, b) { return Math.max(a, Math.min(b, x | 0)); }
