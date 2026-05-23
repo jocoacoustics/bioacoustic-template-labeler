@@ -10,7 +10,7 @@ let STORE = {
   freqs: null,
   duration: 0,
   fmin: 0,
-  fmax: 16000,
+  fmax: 0,
   freqScale: 'linear',
   colormap: 'magma',
 };

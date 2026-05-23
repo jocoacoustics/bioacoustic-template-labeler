@@ -1,11 +1,11 @@
 'use strict';
 
 const CONFIG = {
-  targetSampleRate: 32000,
+  targetSampleRate: null, // null = usar sample rate nativo del audio para mostrar el espectro completo
   nFft: 1024,
   hopLength: 512,
   displayFminHz: 0,
-  displayFmaxHz: 16000,
+  displayFmaxHz: null, // null = Nyquist del audio procesado
   maxDisplayWidth: 18000,
   freqScale: 'linear',
   colormap: 'magma',
@@ -22,7 +22,7 @@ const state = {
   objectUrl: null,
   audioBuffer: null,
   samples: null,
-  sampleRate: CONFIG.targetSampleRate,
+  sampleRate: 0,
   duration: 0,
   spectrogramReady: false,
   display: null,
@@ -443,7 +443,21 @@ function renderTemplateNavigator() {
 
   chipTargets.forEach(renderInto);
 
-  const idx = Math.max(0, state.templates.findIndex(t => t.id === state.activeTemplateId));
+  const activeIdx = state.templates.findIndex(t => t.id === state.activeTemplateId);
+  if (activeIdx < 0) {
+    const pagerText = 'Nueva plantilla · dibuja una caja';
+    if (el.templatePager) el.templatePager.textContent = pagerText;
+    if (el.searchTemplatePager) el.searchTemplatePager.textContent = 'Selecciona una plantilla';
+    if (el.btnPrevTemplate) el.btnPrevTemplate.disabled = true;
+    if (el.btnNextTemplate) el.btnNextTemplate.disabled = true;
+    if (el.btnPrevSearchTemplate) el.btnPrevSearchTemplate.disabled = true;
+    if (el.btnNextSearchTemplate) el.btnNextSearchTemplate.disabled = true;
+    if (el.btnRemoveTemplate) el.btnRemoveTemplate.disabled = true;
+    if (typeof updateSearchButtonsState === 'function') updateSearchButtonsState();
+    return;
+  }
+
+  const idx = activeIdx;
   const tpl = state.templates[idx];
   const pagerText = `Plantilla ${idx + 1} de ${state.templates.length} · ${displayLabelForTemplate(tpl)}`;
   if (el.templatePager) el.templatePager.textContent = pagerText;
@@ -452,7 +466,7 @@ function renderTemplateNavigator() {
   if (el.btnNextTemplate) el.btnNextTemplate.disabled = state.templates.length <= 1;
   if (el.btnPrevSearchTemplate) el.btnPrevSearchTemplate.disabled = state.templates.length <= 1;
   if (el.btnNextSearchTemplate) el.btnNextSearchTemplate.disabled = state.templates.length <= 1;
-  if (el.btnRemoveTemplate) el.btnRemoveTemplate.disabled = state.templates.length === 0;
+  if (el.btnRemoveTemplate) el.btnRemoveTemplate.disabled = false;
   if (typeof updateSearchButtonsState === 'function') updateSearchButtonsState();
 }
 function setActiveTemplate(id) {
@@ -482,8 +496,8 @@ function clearFieldsForNewTemplate() {
   el.roiTmax.value = 0;
   el.roiFmin.value = 0;
   el.roiFmax.value = 0;
-  if (el.roiLabel) el.roiLabel.value = nextFonotipoName();
-  el.roiSummary.textContent = 'Dibuja una caja para la nueva plantilla.';
+  if (el.roiLabel) el.roiLabel.value = '';
+  el.roiSummary.textContent = 'Dibuja una caja para crear la primera plantilla.';
   if (el.btnSaveRoi) el.btnSaveRoi.disabled = true;
   if (el.btnClearRoi) el.btnClearRoi.disabled = false;
   drawOverlay();
@@ -516,15 +530,12 @@ function removeActiveTemplate() {
   if (!state.templates.length) {
     state.activeTemplateId = null;
     state.roi = null;
-    if (state.spectrogramReady) {
-      addTemplatePlaceholder();
-    } else {
-      clearFieldsForNewTemplate();
-      if (el.roiLabel) el.roiLabel.value = '';
-      el.btnSearch.disabled = true;
-      if (el.btnSearchAllTemplates) el.btnSearchAllTemplates.disabled = true;
-      if (el.btnRemoveTemplate) el.btnRemoveTemplate.disabled = true;
-    }
+    clearFieldsForNewTemplate();
+    if (el.roiLabel) el.roiLabel.value = '';
+    el.roiSummary.textContent = 'Sin plantilla. Dibuja una caja para crear una nueva.';
+    el.btnSearch.disabled = true;
+    if (el.btnSearchAllTemplates) el.btnSearchAllTemplates.disabled = true;
+    if (el.btnRemoveTemplate) el.btnRemoveTemplate.disabled = true;
   } else {
     const next = state.templates[Math.min(idx, state.templates.length - 1)];
     state.activeTemplateId = next.id;
@@ -691,7 +702,12 @@ function enableAfterSpectrogram() {
   if (el.btnAddTemplate) el.btnAddTemplate.disabled = false;
   if (el.btnSaveRoi) el.btnSaveRoi.disabled = true;
   if (el.btnClearRoi) el.btnClearRoi.disabled = false;
-  addTemplatePlaceholder();
+  clearFieldsForNewTemplate();
+  if (el.roiLabel) el.roiLabel.value = '';
+  el.roiSummary.textContent = 'Dibuja una caja para crear la primera plantilla.';
+  updateSearchButtonsState();
+  renderTemplateNavigator();
+  drawOverlay();
 }
 
 
@@ -743,18 +759,23 @@ async function handleFile(file) {
     const decoded = await audioCtx.decodeAudioData(arrayBuffer.slice(0));
     const mono = mixToMono(decoded);
     updateProcessing('Preparando señal mono...', 18);
-    const resampled = resampleLinear(mono, decoded.sampleRate, CONFIG.targetSampleRate);
-    state.samples = resampled;
-    state.sampleRate = CONFIG.targetSampleRate;
-    state.duration = resampled.length / CONFIG.targetSampleRate;
-    if (el.audioInfo) el.audioInfo.textContent = `${bytesToMb(file.size)} MB · duración ${state.duration.toFixed(2)} s · procesado a ${CONFIG.targetSampleRate} Hz`;
+
+    // Para no recortar artificialmente el espectrograma a 16 kHz,
+    // se conserva por defecto el sample rate nativo del audio decodificado.
+    // Así el eje de frecuencia llega hasta Nyquist: decoded.sampleRate / 2.
+    const processingSampleRate = decoded.sampleRate;
+    const processed = new Float32Array(mono);
+    state.samples = processed;
+    state.sampleRate = processingSampleRate;
+    state.duration = processed.length / processingSampleRate;
+    if (el.audioInfo) el.audioInfo.textContent = `${bytesToMb(file.size)} MB · duración ${state.duration.toFixed(2)} s · sample rate ${Math.round(processingSampleRate)} Hz`;
     ensureWorker();
     state.worker.postMessage({
       type: 'build-spectrogram',
-      samples: resampled,
-      sampleRate: CONFIG.targetSampleRate,
+      samples: processed,
+      sampleRate: processingSampleRate,
       config: currentSpectrogramConfig(),
-    }, [resampled.buffer]);
+    }, [processed.buffer]);
   } catch (err) {
     hideProcessing();
     console.error(err);
@@ -1094,6 +1115,7 @@ function drawMatches(ctx) {
 
 function drawTemplates(ctx) {
   for (const tpl of state.templates) {
+    if (!isTemplateValid(tpl)) continue;
     const active = tpl.id === state.activeTemplateId;
     const roi = { tmin: tpl.tmin, tmax: tpl.tmax, fmin: tpl.fmin, fmax: tpl.fmax };
     drawRoi(ctx, roi, displayLabelForTemplate(tpl), tpl.color, hexToRgba(tpl.color, active ? 0.10 : 0.05), active ? 3 : 2, active);
@@ -1155,7 +1177,11 @@ function setRoi(roi, fromFields = false) {
   el.roiFmax.value = fmt(clipped.fmax, 1);
   if (el.btnSaveRoi) el.btnSaveRoi.disabled = false;
   if (el.btnClearRoi) el.btnClearRoi.disabled = false;
-  if (el.btnAddTemplate) el.btnAddTemplate.disabled = !isRoiValid(clipped);
+  const validNow = isRoiValid(clipped);
+  if (validNow && el.roiLabel && !cleanLabel(el.roiLabel.value)) {
+    el.roiLabel.value = nextFonotipoName();
+  }
+  if (el.btnAddTemplate) el.btnAddTemplate.disabled = !validNow;
   updateSearchButtonsState();
   el.roiSummary.textContent = `Plantilla actual: t=[${fmt(clipped.tmin)}, ${fmt(clipped.tmax)}] s · f=[${fmt(clipped.fmin, 1)}, ${fmt(clipped.fmax, 1)}] Hz`;
   if (!fromFields) {
@@ -1594,18 +1620,20 @@ function addTemplateAndAdvance() {
   const tpl = saveCurrentTemplate({ silent: false });
   if (!tpl) return;
   tpl.isDraft = false;
-  const draft = createDraftTemplate();
+
+  // Después de agregar, no se crea una plantilla falsa en el origen.
+  // Queda un borrador visual vacío hasta que el usuario dibuje una caja real.
+  state.activeTemplateId = null;
   state.roi = null;
-  el.roiTmin.value = 0;
-  el.roiTmax.value = 0;
-  el.roiFmin.value = 0;
-  el.roiFmax.value = 0;
-  if (el.roiLabel) el.roiLabel.value = displayLabelForTemplate(draft);
-  el.roiSummary.textContent = `Nueva plantilla: ${displayLabelForTemplate(draft)}. Dibuja una caja.`;
+  clearFieldsForNewTemplate();
+  if (el.roiLabel) el.roiLabel.value = '';
+  el.roiSummary.textContent = 'Dibuja una caja para crear la siguiente plantilla.';
+  if (el.btnAddTemplate) el.btnAddTemplate.disabled = true;
   renderTemplateNavigator();
+  updateSearchButtonsState();
   drawOverlay();
-  setStatus('Nueva plantilla', 'Dibuja una nueva caja y pulsa Agregar plantilla + para guardarla.');
-  setCoach('Nueva plantilla', 'La plantilla anterior quedó guardada. Marca otro fonotipo o pulsa Buscar coincidencias para procesar las plantillas pendientes.');
+  setStatus('Nueva plantilla', 'Dibuja una nueva caja o pulsa Buscar coincidencias para procesar las plantillas pendientes.');
+  setCoach('Nueva plantilla', 'La plantilla anterior quedó guardada. La siguiente plantilla aparecerá cuando dibujes una caja válida.');
   openRoiStep();
 }
 function searchPendingTemplatesFromTemplatePanel() {
