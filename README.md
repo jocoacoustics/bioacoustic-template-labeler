@@ -7,7 +7,7 @@ Aplicación web pura para marcar una plantilla acústica en un espectrograma y b
 Descomprime el ZIP y sirve la carpeta con un servidor local. Por ejemplo, con Python/Conda:
 
 ```bash
-cd bioacoustic-template-labeler-wizard-v14
+cd bioacoustic-template-labeler-wizard-v8
 python -m http.server 8000
 ```
 
@@ -66,3 +66,34 @@ Los archivos CSV, XLSX y TXT Audacity se descargan usando el mismo nombre base d
 - Se añadieron límites internos: mínimo objetivo de candidatos y máximo automático, sin inventar coincidencias falsas.
 - El máximo automático es distinto del límite técnico de dibujo/exportación.
 - Se conserva el botón “Buscar similares” y la tabla ordenable de v12.
+
+## Cambios v16
+
+- Soporte multi-plantilla / multi-fonotipo.
+- Navegación por chips y carrusel entre plantillas.
+- Cada plantilla conserva etiqueta, color, parámetros y resultados.
+- La primera búsqueda procesa todas las plantillas; las siguientes búsquedas son locales a la plantilla activa.
+- El botón Limpiar afecta solo a la plantilla activa.
+- La columna etiqueta de la tabla es editable y propaga el cambio a todos los resultados de la misma plantilla.
+- Exportación combinada CSV/XLSX/TXT Audacity con todas las plantillas.
+
+## Cambios v17
+
+- Flujo multi-plantilla simplificado.
+- El panel **Plantilla** usa chips arriba y carrusel abajo.
+- El botón **Agregar plantilla +** guarda/actualiza la plantilla actual y abre automáticamente una nueva plantilla para seguir marcando. Si solo marcas una plantilla, puedes pulsar directamente **Buscar coincidencias**; se guarda automáticamente si la caja es válida.
+- El botón **Quitar plantilla −** elimina la plantilla activa.
+- El botón **Buscar coincidencias** procesa todas las plantillas válidas con autoajuste por plantilla.
+- El panel **Búsqueda** replica la navegación por chips/carrusel para ajustar parámetros por plantilla.
+- La tabla de resultados elimina la columna redundante de plantilla y muestra la etiqueta como primera columna, en una cápsula coloreada editable.
+
+## Cambios v18
+
+- La tabla de resultados queda ordenada como `#`, `etiqueta`, `score`, `tmin`, `tmax`, `fmin`, `fmax`.
+- Si marcas una plantilla válida, puedes pulsar directamente **Buscar coincidencias** sin antes pulsar **Agregar plantilla +**; la app la guarda automáticamente.
+- **Quitar plantilla −** usa un tono rojo suave y **Agregar plantilla +** un tono azul.
+
+
+## Cambio v19
+
+La búsqueda desde el panel Plantilla ahora procesa solo plantillas nuevas o pendientes. Si agregas plantillas después de una búsqueda, se conservan las coincidencias y parámetros ya ajustados de las plantillas anteriores. Para recalcular una plantilla existente, selecciónala en el panel Búsqueda y pulsa Buscar similares.

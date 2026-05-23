@@ -146,6 +146,7 @@
         <a href="#interfaz">Interfaz</a>
         <a href="#parametros">Parámetros</a>
         <a href="#matematica">Formulación matemática</a>
+        <a href="#multiplantilla">Modo multi-plantilla</a>
         <a href="#exportacion">Exportación CSV</a>
         <a href="#problemas">Problemas frecuentes</a>
         <a href="#arriba">Volver arriba</a>
@@ -369,8 +370,21 @@ python -m http.server 8000</code></pre>
 \	fmin	fmax</code></pre>
 </section>
 
-</main>
+
+<section id="multiplantilla"><h2>Modo multi-plantilla</h2><p>Desde la versión v16, la aplicación permite trabajar con varias plantillas acústicas en el mismo audio. Cada plantilla tiene su propia etiqueta, color, coordenadas, parámetros de búsqueda y resultados asociados.</p><p>Si no se escribe una etiqueta, la aplicación asigna nombres automáticos como <code>fonotipo1</code>, <code>fonotipo2</code> y así sucesivamente. Los chips horizontales permiten saltar entre plantillas, mientras que el carrusel permite avanzar o retroceder una plantilla a la vez.</p><p>La primera vez que se pulsa <strong>Buscar similares</strong>, se procesan todas las plantillas guardadas. Después de esa primera corrida, las búsquedas siguientes se aplican solo a la plantilla activa, para permitir ajustes finos. El botón <strong>Limpiar</strong> también actúa localmente sobre la plantilla activa.</p><p>El casillero <strong>Ver cajas</strong> permite mostrar u ocultar las cajas inferidas de la plantilla activa sin borrar los resultados ni afectar las exportaciones.</p><p>En la tabla de resultados, la columna de etiqueta es editable. Si se cambia la etiqueta de una coincidencia, el cambio se propaga a todas las coincidencias de la misma plantilla y al chip correspondiente.</p></section>
+
+<section id="v17-multiplantilla-simplificado">
+  <h2>Flujo multi-plantilla simplificado</h2>
+  <p>Desde la versión v17, el etiquetador trabaja como un gestor de plantillas acústicas. Cada plantilla conserva su etiqueta, color, coordenadas, parámetros de búsqueda y coincidencias.</p>
+  <p>El panel <strong>Plantilla</strong> permite navegar con chips superiores y carrusel inferior. El botón <strong>Agregar plantilla +</strong> guarda o actualiza la plantilla actual y abre una nueva plantilla para seguir marcando. El botón <strong>Quitar plantilla −</strong> elimina la plantilla activa.</p>
+  <p>El botón <strong>Buscar coincidencias</strong> guarda automáticamente la plantilla marcada si la caja es válida y busca todas las plantillas válidas, aplicando el autoajuste por plantilla. Luego el panel <strong>Búsqueda</strong> permite revisar y ajustar cada plantilla con la misma navegación por chips y carrusel.</p>
+  <p>La tabla de resultados muestra primero el número de fila (#) y luego la etiqueta en una cápsula coloreada editable. Al editar esa etiqueta, se actualiza la plantilla completa, sus coincidencias y las exportaciones CSV, XLSX y TXT Audacity.</p>
+</section>
+
+<section id="v18"><h2>Actualización v18</h2><p>La tabla de resultados se ordena como <code>#</code>, <code>etiqueta</code>, <code>score</code>, <code>tmin</code>, <code>tmax</code>, <code>fmin</code>, <code>fmax</code>. Además, si se marca una plantilla válida, el botón <strong>Buscar coincidencias</strong> queda disponible y guarda automáticamente esa plantilla antes de buscar, sin exigir pulsar <strong>Agregar plantilla +</strong>. Los botones de gestión de plantilla usan colores diferenciados: rojo suave para quitar y azul para agregar.</p></section>
+<section id="v19"><h2>Actualización v19: búsqueda incremental</h2><p>Desde el panel <strong>Plantilla</strong>, el botón <strong>Buscar coincidencias</strong> procesa solo plantillas nuevas o pendientes. Las coincidencias y parámetros ya ajustados de plantillas previas se conservan. Para recalcular una plantilla existente, se selecciona en <strong>Búsqueda</strong> y se pulsa <strong>Buscar similares</strong>.</p></section></main>
   </div>
 <section><h2>Exportación de resultados</h2><p>Los archivos CSV, XLSX y TXT Audacity se descargan usando el mismo nombre base del audio original, cambiando solo la extensión. Si el audio se llama <code>audio.mp3</code>, las exportaciones serán <code>audio.csv</code>, <code>audio.xlsx</code> y <code>audio.txt</code>.</p></section>
 </body>
 </html>
+

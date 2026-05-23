@@ -14,6 +14,7 @@ const CONFIG = {
   maxMatchesToStore: 500,
   freqAxisW: 108,
   timeAxisH: 30,
+  templateColors: ['#00e5ff', '#39ff14', '#2979ff', '#ffd60a', '#ff4fd8', '#7c4dff', '#00f5a0', '#4cc9f0', '#c6ff00', '#ff66c4'],
 };
 
 const state = {
@@ -27,6 +28,15 @@ const state = {
   display: null,
   roi: null,
   savedRoi: null,
+  templates: [],
+  activeTemplateId: null,
+  templateCounter: 0,
+  hasSearched: false,
+  searchQueue: [],
+  searchResultsAccumulator: [],
+  currentSearchTemplateId: null,
+  currentSearchAll: false,
+  forceAutoSearch: false,
   matches: [],
   tableSort: { key: 'score', dir: 'desc' },
   worker: null,
@@ -78,6 +88,17 @@ const el = {
   roiFmin: document.getElementById('roiFmin'),
   roiFmax: document.getElementById('roiFmax'),
   roiLabel: document.getElementById('roiLabel'),
+  templateChips: document.getElementById('templateChips'),
+  searchTemplateChips: document.getElementById('searchTemplateChips'),
+  btnPrevTemplate: document.getElementById('btnPrevTemplate'),
+  btnNextTemplate: document.getElementById('btnNextTemplate'),
+  btnPrevSearchTemplate: document.getElementById('btnPrevSearchTemplate'),
+  btnNextSearchTemplate: document.getElementById('btnNextSearchTemplate'),
+  templatePager: document.getElementById('templatePager'),
+  searchTemplatePager: document.getElementById('searchTemplatePager'),
+  btnAddTemplate: document.getElementById('btnAddTemplate'),
+  btnSearchAllTemplates: document.getElementById('btnSearchAllTemplates'),
+  btnRemoveTemplate: document.getElementById('btnRemoveTemplate'),
   btnApplyRoi: document.getElementById('btnApplyRoi'),
   btnSaveRoi: document.getElementById('btnSaveRoi'),
   btnClearRoi: document.getElementById('btnClearRoi'),
@@ -88,6 +109,7 @@ const el = {
   strideSec: document.getElementById('strideSec'),
   strideSecInput: document.getElementById('strideSecInput'),
   autoAdjustParams: document.getElementById('autoAdjustParams'),
+  showActiveMatches: document.getElementById('showActiveMatches'),
   infoDots: Array.from(document.querySelectorAll('.info-dot')),
   btnSearch: document.getElementById('btnSearch'),
   btnClearMatches: document.getElementById('btnClearMatches'),
@@ -221,6 +243,15 @@ function clamp(v, a, b) {
 function resetForNewAudio() {
   state.roi = null;
   state.savedRoi = null;
+  state.templates = [];
+  state.activeTemplateId = null;
+  state.templateCounter = 0;
+  state.hasSearched = false;
+  state.searchQueue = [];
+  state.searchResultsAccumulator = [];
+  state.currentSearchTemplateId = null;
+  state.currentSearchAll = false;
+  state.forceAutoSearch = false;
   state.matches = [];
   state.spectrogramReady = false;
   state.display = null;
@@ -231,21 +262,287 @@ function resetForNewAudio() {
   el.roiFmin.value = 0;
   el.roiFmax.value = 0;
   if (el.roiLabel) el.roiLabel.value = '';
-  el.roiSummary.textContent = 'Sin ROI.';
+  el.roiSummary.textContent = 'Sin plantilla.';
   el.matchSummary.textContent = 'Sin coincidencias.';
   if (el.autoAdjustParams) el.autoAdjustParams.checked = true;
+  if (el.showActiveMatches) el.showActiveMatches.checked = true;
   el.spectrogramTitle.textContent = state.file ? `Espectrograma · ${state.file.name}` : 'Sin espectrograma';
-  el.btnApplyRoi.disabled = true;
-  el.btnSaveRoi.disabled = true;
-  el.btnClearRoi.disabled = true;
+  if (el.btnApplyRoi) el.btnApplyRoi.disabled = true;
+  if (el.btnSaveRoi) el.btnSaveRoi.disabled = true;
+  if (el.btnClearRoi) el.btnClearRoi.disabled = true;
+  if (el.btnAddTemplate) el.btnAddTemplate.disabled = true;
+  if (el.btnSearchAllTemplates) el.btnSearchAllTemplates.disabled = true;
+  if (el.btnRemoveTemplate) el.btnRemoveTemplate.disabled = true;
   el.btnSearch.disabled = true;
   el.btnClearMatches.disabled = true;
   el.btnExportCsv.disabled = true;
   if (el.btnExportXlsx) el.btnExportXlsx.disabled = true;
   if (el.btnExportTxt) el.btnExportTxt.disabled = true;
   clearMatchesTable();
+  renderTemplateNavigator();
   resetPanelsForInitialState();
   drawOverlay();
+}
+
+function getActiveTemplate() {
+  return state.templates.find(t => t.id === state.activeTemplateId) || null;
+}
+
+function makeTemplateId() {
+  state.templateCounter += 1;
+  return `tpl_${state.templateCounter}`;
+}
+
+function nextFonotipoName() {
+  return `fonotipo${state.templateCounter + 1}`;
+}
+
+function colorForTemplateIndex(idx) {
+  return CONFIG.templateColors[idx % CONFIG.templateColors.length];
+}
+
+function isTemplateValid(tpl) {
+  return Boolean(tpl && Number.isFinite(tpl.tmin) && Number.isFinite(tpl.tmax) && Number.isFinite(tpl.fmin) && Number.isFinite(tpl.fmax) && tpl.tmax > tpl.tmin && tpl.fmax > tpl.fmin);
+}
+
+function isRoiValid(roi) {
+  return Boolean(roi && Number.isFinite(roi.tmin) && Number.isFinite(roi.tmax) && Number.isFinite(roi.fmin) && Number.isFinite(roi.fmax) && roi.tmax > roi.tmin && roi.fmax > roi.fmin);
+}
+
+function hasSearchableTemplateOrCurrentRoi() {
+  return state.templates.some(isTemplateValid) || isRoiValid(state.roi);
+}
+
+function getPendingTemplates() {
+  return state.templates.filter(t => isTemplateValid(t) && !t.hasSearched);
+}
+
+function hasPendingTemplateOrCurrentRoi() {
+  return getPendingTemplates().length > 0 || isRoiValid(state.roi);
+}
+
+function updateSearchButtonsState() {
+  const enabled = hasSearchableTemplateOrCurrentRoi();
+  if (el.btnSearchAllTemplates) el.btnSearchAllTemplates.disabled = !enabled;
+  if (el.btnSearch) el.btnSearch.disabled = !enabled;
+}
+
+function createDraftTemplate() {
+  const id = makeTemplateId();
+  const defaultLabel = `fonotipo${state.templateCounter}`;
+  const tpl = {
+    id,
+    defaultLabel,
+    etiqueta: defaultLabel,
+    color: colorForTemplateIndex(state.templates.length),
+    metric: el.metricSelect?.value || 'coseno',
+    scoreThreshold: Number(el.scoreThreshold?.value || 0.85),
+    strideSec: Number(el.strideSec?.value || 0.10),
+    autoAdjust: true,
+    showMatches: true,
+    matches: [],
+    hasSearched: false,
+    tmin: 0,
+    tmax: 0,
+    fmin: 0,
+    fmax: 0,
+    isDraft: true,
+  };
+  state.templates.push(tpl);
+  state.activeTemplateId = id;
+  return tpl;
+}
+
+function displayLabelForTemplate(tpl) {
+  if (!tpl) return '';
+  return cleanLabel(tpl.etiqueta || tpl.defaultLabel || '');
+}
+
+function syncActiveTemplateParamsFromUi() {
+  const tpl = getActiveTemplate();
+  if (!tpl) return;
+  tpl.metric = el.metricSelect.value;
+  tpl.scoreThreshold = Number(el.scoreThreshold.value);
+  tpl.strideSec = Number(el.strideSec.value);
+  tpl.autoAdjust = Boolean(el.autoAdjustParams?.checked);
+  tpl.showMatches = Boolean(el.showActiveMatches?.checked);
+  tpl.etiqueta = cleanLabel(el.roiLabel?.value || tpl.etiqueta || tpl.defaultLabel || '');
+}
+
+function applyTemplateToFields(tpl) {
+  if (!tpl) {
+    el.roiTmin.value = 0;
+    el.roiTmax.value = 0;
+    el.roiFmin.value = 0;
+    el.roiFmax.value = 0;
+    if (el.roiLabel) el.roiLabel.value = '';
+    if (el.showActiveMatches) el.showActiveMatches.checked = true;
+    el.roiSummary.textContent = 'Sin plantilla.';
+    state.roi = null;
+    drawOverlay();
+    return;
+  }
+  state.roi = { tmin: tpl.tmin, tmax: tpl.tmax, fmin: tpl.fmin, fmax: tpl.fmax };
+  el.roiTmin.value = fmt(tpl.tmin, 3);
+  el.roiTmax.value = fmt(tpl.tmax, 3);
+  el.roiFmin.value = fmt(tpl.fmin, 1);
+  el.roiFmax.value = fmt(tpl.fmax, 1);
+  if (el.roiLabel) el.roiLabel.value = displayLabelForTemplate(tpl);
+  el.metricSelect.value = tpl.metric || 'coseno';
+  setScoreControls(tpl.scoreThreshold ?? 0.85);
+  setStrideControls(tpl.strideSec ?? 0.10);
+  if (el.autoAdjustParams) el.autoAdjustParams.checked = tpl.autoAdjust ?? !tpl.hasSearched;
+  if (el.showActiveMatches) el.showActiveMatches.checked = tpl.showMatches !== false;
+  if (el.btnSaveRoi) el.btnSaveRoi.disabled = false;
+  if (el.btnClearRoi) el.btnClearRoi.disabled = false;
+  if (el.btnRemoveTemplate) el.btnRemoveTemplate.disabled = false;
+  updateSearchButtonsState();
+  el.roiSummary.textContent = `Plantilla activa: ${displayLabelForTemplate(tpl)} · t=[${fmt(tpl.tmin)}, ${fmt(tpl.tmax)}] s · f=[${fmt(tpl.fmin, 1)}, ${fmt(tpl.fmax, 1)}] Hz`;
+  drawOverlay();
+}
+
+function renderTemplateNavigator() {
+  const chipTargets = [el.templateChips, el.searchTemplateChips].filter(Boolean);
+  for (const target of chipTargets) target.innerHTML = '';
+
+  if (!state.templates.length) {
+    if (el.templatePager) el.templatePager.textContent = 'Sin plantillas';
+    if (el.searchTemplatePager) el.searchTemplatePager.textContent = 'Sin plantillas';
+    if (el.btnPrevTemplate) el.btnPrevTemplate.disabled = true;
+    if (el.btnNextTemplate) el.btnNextTemplate.disabled = true;
+    if (el.btnPrevSearchTemplate) el.btnPrevSearchTemplate.disabled = true;
+    if (el.btnNextSearchTemplate) el.btnNextSearchTemplate.disabled = true;
+    if (el.btnRemoveTemplate) el.btnRemoveTemplate.disabled = true;
+    if (el.btnSearchAllTemplates) el.btnSearchAllTemplates.disabled = true;
+    return;
+  }
+
+  const renderInto = (target) => {
+    if (!target) return;
+    state.templates.forEach((tpl, idx) => {
+      const btn = document.createElement('button');
+      btn.type = 'button';
+      btn.className = `template-chip${tpl.id === state.activeTemplateId ? ' active' : ''}`;
+      btn.style.setProperty('--tpl-color', tpl.color);
+      btn.textContent = displayLabelForTemplate(tpl);
+      btn.title = `Plantilla ${idx + 1}`;
+      btn.addEventListener('click', () => setActiveTemplate(tpl.id));
+      target.appendChild(btn);
+    });
+  };
+
+  chipTargets.forEach(renderInto);
+
+  const idx = Math.max(0, state.templates.findIndex(t => t.id === state.activeTemplateId));
+  const tpl = state.templates[idx];
+  const pagerText = `Plantilla ${idx + 1} de ${state.templates.length} · ${displayLabelForTemplate(tpl)}`;
+  if (el.templatePager) el.templatePager.textContent = pagerText;
+  if (el.searchTemplatePager) el.searchTemplatePager.textContent = pagerText;
+  if (el.btnPrevTemplate) el.btnPrevTemplate.disabled = state.templates.length <= 1;
+  if (el.btnNextTemplate) el.btnNextTemplate.disabled = state.templates.length <= 1;
+  if (el.btnPrevSearchTemplate) el.btnPrevSearchTemplate.disabled = state.templates.length <= 1;
+  if (el.btnNextSearchTemplate) el.btnNextSearchTemplate.disabled = state.templates.length <= 1;
+  if (el.btnRemoveTemplate) el.btnRemoveTemplate.disabled = state.templates.length === 0;
+  if (typeof updateSearchButtonsState === 'function') updateSearchButtonsState();
+}
+function setActiveTemplate(id) {
+  syncActiveTemplateParamsFromUi();
+  const tpl = state.templates.find(t => t.id === id);
+  if (!tpl) return;
+  state.activeTemplateId = id;
+  renderTemplateNavigator();
+  applyTemplateToFields(tpl);
+  setCoach('Plantilla activa', `Edita o busca similares para ${displayLabelForTemplate(tpl)}.`);
+}
+
+function activeTemplateIndex() {
+  return state.templates.findIndex(t => t.id === state.activeTemplateId);
+}
+
+function goTemplate(delta) {
+  if (!state.templates.length) return;
+  const idx = activeTemplateIndex();
+  const next = (idx + delta + state.templates.length) % state.templates.length;
+  setActiveTemplate(state.templates[next].id);
+}
+
+function clearFieldsForNewTemplate() {
+  state.roi = null;
+  el.roiTmin.value = 0;
+  el.roiTmax.value = 0;
+  el.roiFmin.value = 0;
+  el.roiFmax.value = 0;
+  if (el.roiLabel) el.roiLabel.value = nextFonotipoName();
+  el.roiSummary.textContent = 'Dibuja una caja para la nueva plantilla.';
+  if (el.btnSaveRoi) el.btnSaveRoi.disabled = true;
+  if (el.btnClearRoi) el.btnClearRoi.disabled = false;
+  drawOverlay();
+}
+
+function addTemplatePlaceholder() {
+  syncActiveTemplateParamsFromUi();
+  const tpl = createDraftTemplate();
+  state.roi = null;
+  el.roiTmin.value = 0;
+  el.roiTmax.value = 0;
+  el.roiFmin.value = 0;
+  el.roiFmax.value = 0;
+  if (el.roiLabel) el.roiLabel.value = displayLabelForTemplate(tpl);
+  el.roiSummary.textContent = 'Dibuja una caja para esta plantilla.';
+  if (el.btnSaveRoi) el.btnSaveRoi.disabled = true;
+  if (el.btnClearRoi) el.btnClearRoi.disabled = false;
+  renderTemplateNavigator();
+  drawOverlay();
+  setStatus('Nueva plantilla', 'Dibuja una caja y pulsa Agregar plantilla +.');
+  setCoach('Nueva plantilla', 'Marca otro fonotipo o patrón acústico. Si no escribes etiqueta, se usará fonotipo automático.');
+  openRoiStep();
+}
+function removeActiveTemplate() {
+  const idx = activeTemplateIndex();
+  if (idx < 0) return;
+  const removed = state.templates[idx];
+  state.templates.splice(idx, 1);
+  state.matches = getAllMatches();
+  if (!state.templates.length) {
+    state.activeTemplateId = null;
+    state.roi = null;
+    if (state.spectrogramReady) {
+      addTemplatePlaceholder();
+    } else {
+      clearFieldsForNewTemplate();
+      if (el.roiLabel) el.roiLabel.value = '';
+      el.btnSearch.disabled = true;
+      if (el.btnSearchAllTemplates) el.btnSearchAllTemplates.disabled = true;
+      if (el.btnRemoveTemplate) el.btnRemoveTemplate.disabled = true;
+    }
+  } else {
+    const next = state.templates[Math.min(idx, state.templates.length - 1)];
+    state.activeTemplateId = next.id;
+    applyTemplateToFields(next);
+  }
+  renderTemplateNavigator();
+  renderMatchesTable();
+  updateExportButtons();
+  drawOverlay();
+  showToast('Plantilla eliminada', `${displayLabelForTemplate(removed)} fue retirada con sus coincidencias.`);
+}
+function getAllMatches() {
+  return state.templates.flatMap(tpl => (tpl.matches || []).map(m => ({ ...m })));
+}
+
+function refreshCombinedMatches() {
+  state.matches = getAllMatches();
+  state.tableSort = { key: 'score', dir: 'desc' };
+  renderMatchesTable();
+  updateExportButtons();
+}
+
+function updateExportButtons() {
+  const any = state.matches.length > 0;
+  el.btnClearMatches.disabled = !getActiveTemplate() || !(getActiveTemplate().matches || []).length;
+  el.btnExportCsv.disabled = !any;
+  if (el.btnExportXlsx) el.btnExportXlsx.disabled = !any;
+  if (el.btnExportTxt) el.btnExportTxt.disabled = !any;
 }
 
 function ensureWorker() {
@@ -321,30 +618,51 @@ function onWorkerMessage(ev) {
   }
 
   if (msg.type === 'search-ready') {
+    const tpl = state.templates.find(t => t.id === state.currentSearchTemplateId) || getActiveTemplate();
+    if (msg.auto && tpl) {
+      if (Number.isFinite(msg.auto.scoreThreshold)) tpl.scoreThreshold = msg.auto.scoreThreshold;
+      if (Number.isFinite(msg.auto.strideSec)) tpl.strideSec = msg.auto.strideSec;
+      tpl.autoAdjust = false;
+    }
+    if (tpl) {
+      const etiqueta = displayLabelForTemplate(tpl);
+      tpl.matches = (msg.matches || []).map(m => ({ ...addEtiquetaToMatch(m, etiqueta), templateId: tpl.id, templateLabel: etiqueta, color: tpl.color }));
+      tpl.hasSearched = true;
+      tpl.showMatches = tpl.showMatches !== false;
+      state.searchResultsAccumulator.push({ template: tpl, count: tpl.matches.length, auto: msg.auto || null });
+    }
+
+    if (state.searchQueue.length > 0) {
+      startNextSearchInQueue();
+      return;
+    }
+
     hideProcessing();
-    if (msg.auto) {
-      if (Number.isFinite(msg.auto.scoreThreshold)) setScoreControls(msg.auto.scoreThreshold);
-      if (Number.isFinite(msg.auto.strideSec)) setStrideControls(msg.auto.strideSec);
-      // El autoajuste sirve para la primera propuesta. Luego se desactiva
-      // para que los cambios manuales de score/separación sí tengan efecto
-      // en búsquedas finas posteriores. Al subir un nuevo audio se reactiva.
+    if (state.currentSearchAll || !state.hasSearched) {
+      state.hasSearched = true;
       if (el.autoAdjustParams) el.autoAdjustParams.checked = false;
     }
-    const etiqueta = cleanLabel(state.savedRoi?.etiqueta ?? currentEtiqueta());
-    state.matches = (msg.matches || []).map(m => addEtiquetaToMatch(m, etiqueta));
+    state.currentSearchTemplateId = null;
+    state.currentSearchAll = false;
+    state.forceAutoSearch = false;
+    refreshCombinedMatches();
+    const active = getActiveTemplate();
+    if (active) applyTemplateToFields(active);
     drawOverlay();
-    renderMatchesTable();
-    el.btnClearMatches.disabled = state.matches.length === 0;
-    el.btnExportCsv.disabled = state.matches.length === 0;
-    if (el.btnExportXlsx) el.btnExportXlsx.disabled = state.matches.length === 0;
-    if (el.btnExportTxt) el.btnExportTxt.disabled = state.matches.length === 0;
-    const autoNote = msg.auto ? ` Auto: score ${msg.auto.scoreThreshold.toFixed(3)}, separación ${msg.auto.strideSec.toFixed(2)} s.` : '';
-    el.matchSummary.textContent = state.matches.length
-      ? `${state.matches.length} coincidencias encontradas. Mejor score: ${state.matches[0].score.toFixed(3)}.${autoNote}`
-      : `No hubo coincidencias con ese umbral.${autoNote}`;
-    setStatus('Revisa resultados', state.matches.length ? 'Las cajas azules son candidatos similares a la plantilla.' : 'Baja el score o cambia el ROI si no aparecen coincidencias.');
-    setCoach('Revisa los candidatos', state.matches.length ? 'Haz clic en una fila de la tabla para centrar el audio y el espectrograma en esa coincidencia.' : 'No aparecieron candidatos. Prueba bajar el score mínimo o marca una ROI más ajustada.');
-    showToast('Búsqueda terminada', state.matches.length ? `Encontré ${state.matches.length} coincidencias.` : 'No encontré coincidencias con ese umbral.');
+
+    const total = state.searchResultsAccumulator.reduce((acc, item) => acc + item.count, 0);
+    const best = state.matches.length ? Math.max(...state.matches.map(m => m.score || 0)) : 0;
+    const searchedNames = state.searchResultsAccumulator.map(x => displayLabelForTemplate(x.template)).join(', ');
+    const autoBits = state.searchResultsAccumulator
+      .filter(x => x.auto)
+      .map(x => `${displayLabelForTemplate(x.template)}: score ${x.auto.scoreThreshold.toFixed(3)}, sep ${x.auto.strideSec.toFixed(2)} s`);
+    const autoNote = autoBits.length ? ` Auto: ${autoBits.join(' · ')}.` : '';
+    el.matchSummary.textContent = total
+      ? `${total} coincidencias encontradas. Mejor score: ${best.toFixed(3)}.${autoNote}`
+      : `No hubo coincidencias.${autoNote}`;
+    setStatus('Revisa resultados', total ? 'Las cajas de colores son candidatos similares a sus plantillas.' : 'Baja el score o cambia la plantilla si no aparecen coincidencias.');
+    setCoach('Revisa los candidatos', total ? `Búsqueda terminada para: ${searchedNames}. Puedes editar etiquetas en la tabla y se propagan por plantilla.` : 'No aparecieron candidatos. Prueba bajar el score mínimo o marca una plantilla más ajustada.');
+    showToast('Búsqueda terminada', total ? `Encontré ${total} coincidencias.` : 'No encontré coincidencias con esos parámetros.');
     openResultsStep();
     return;
   }
@@ -359,7 +677,11 @@ function onWorkerMessage(ev) {
 
 function enableAfterSpectrogram() {
   el.btnCenterPlayhead.disabled = false;
-  el.btnApplyRoi.disabled = false;
+  if (el.btnApplyRoi) el.btnApplyRoi.disabled = false;
+  if (el.btnAddTemplate) el.btnAddTemplate.disabled = false;
+  if (el.btnSaveRoi) el.btnSaveRoi.disabled = true;
+  if (el.btnClearRoi) el.btnClearRoi.disabled = false;
+  addTemplatePlaceholder();
 }
 
 
@@ -678,16 +1000,34 @@ function drawOverlay() {
   const ctx = el.overlayCanvas.getContext('2d');
   ctx.clearRect(0, 0, el.overlayCanvas.width, el.overlayCanvas.height);
   drawMatches(ctx);
-  drawRoi(ctx, state.roi, 'ROI', '#ef4444', 'rgba(239,68,68,0.18)', 3);
+  drawTemplates(ctx);
+  const active = getActiveTemplate();
+  if (state.roi && (!active || !sameRoi(state.roi, active))) {
+    const c = active?.color || '#ef4444';
+    drawRoi(ctx, state.roi, 'plantilla', c, hexToRgba(c, 0.10), 2, false);
+  }
+}
+
+function sameRoi(a, b) {
+  if (!a || !b) return false;
+  return Math.abs(a.tmin - b.tmin) < 1e-6 && Math.abs(a.tmax - b.tmax) < 1e-6 && Math.abs(a.fmin - b.fmin) < 1e-6 && Math.abs(a.fmax - b.fmax) < 1e-6;
+}
+
+function hexToRgba(hex, alpha) {
+  const h = String(hex || '#00e5ff').replace('#', '');
+  const r = parseInt(h.slice(0, 2), 16) || 0;
+  const g = parseInt(h.slice(2, 4), 16) || 0;
+  const b = parseInt(h.slice(4, 6), 16) || 0;
+  return `rgba(${r},${g},${b},${alpha})`;
 }
 
 function drawMatches(ctx) {
   const matches = state.matches || [];
-  ctx.lineWidth = 2;
-  ctx.strokeStyle = 'rgba(0,120,255,0.95)';
-  ctx.fillStyle = 'rgba(0,120,255,0.14)';
   ctx.font = '11px Arial';
   for (const m of matches.slice(0, CONFIG.maxMatchesToDraw)) {
+    const tpl = state.templates.find(t => t.id === m.templateId);
+    if (tpl && tpl.showMatches === false) continue;
+    const color = m.color || tpl?.color || '#00e5ff';
     const x1 = timeToX(m.tmin);
     const x2 = timeToX(m.tmax);
     const y1 = freqToY(m.fmax);
@@ -696,15 +1036,25 @@ function drawMatches(ctx) {
     const ry = Math.min(y1, y2);
     const rw = Math.abs(x2 - x1);
     const rh = Math.abs(y2 - y1);
+    ctx.lineWidth = 2;
+    ctx.strokeStyle = color;
+    ctx.fillStyle = hexToRgba(color, 0.12);
     ctx.fillRect(rx, ry, rw, rh);
     ctx.strokeRect(rx, ry, rw, rh);
-    ctx.fillStyle = 'rgba(0,120,255,1)';
+    ctx.fillStyle = color;
     ctx.fillText(m.score.toFixed(2), rx + 2, Math.max(12, ry - 2));
-    ctx.fillStyle = 'rgba(0,120,255,0.14)';
   }
 }
 
-function drawRoi(ctx, roi, label, stroke, fill, lineWidth) {
+function drawTemplates(ctx) {
+  for (const tpl of state.templates) {
+    const active = tpl.id === state.activeTemplateId;
+    const roi = { tmin: tpl.tmin, tmax: tpl.tmax, fmin: tpl.fmin, fmax: tpl.fmax };
+    drawRoi(ctx, roi, displayLabelForTemplate(tpl), tpl.color, hexToRgba(tpl.color, active ? 0.10 : 0.05), active ? 3 : 2, active);
+  }
+}
+
+function drawRoi(ctx, roi, label, stroke, fill, lineWidth, doubleBorder = false) {
   if (!roi) return;
   const x1 = timeToX(roi.tmin);
   const x2 = timeToX(roi.tmax);
@@ -719,6 +1069,11 @@ function drawRoi(ctx, roi, label, stroke, fill, lineWidth) {
   ctx.lineWidth = lineWidth;
   ctx.fillRect(rx, ry, rw, rh);
   ctx.strokeRect(rx, ry, rw, rh);
+  if (doubleBorder) {
+    ctx.lineWidth = 1.5;
+    ctx.strokeStyle = 'rgba(15,23,42,0.85)';
+    ctx.strokeRect(rx + 4, ry + 4, Math.max(0, rw - 8), Math.max(0, rh - 8));
+  }
   ctx.fillStyle = stroke;
   ctx.font = '12px Arial';
   ctx.fillText(label, rx + 4, Math.max(12, ry - 4));
@@ -752,12 +1107,14 @@ function setRoi(roi, fromFields = false) {
   el.roiTmax.value = fmt(clipped.tmax, 3);
   el.roiFmin.value = fmt(clipped.fmin, 1);
   el.roiFmax.value = fmt(clipped.fmax, 1);
-  el.btnSaveRoi.disabled = false;
-  el.btnClearRoi.disabled = false;
-  el.roiSummary.textContent = `ROI actual: t=[${fmt(clipped.tmin)}, ${fmt(clipped.tmax)}] s · f=[${fmt(clipped.fmin, 1)}, ${fmt(clipped.fmax, 1)}] Hz`;
+  if (el.btnSaveRoi) el.btnSaveRoi.disabled = false;
+  if (el.btnClearRoi) el.btnClearRoi.disabled = false;
+  if (el.btnAddTemplate) el.btnAddTemplate.disabled = !isRoiValid(clipped);
+  updateSearchButtonsState();
+  el.roiSummary.textContent = `Plantilla actual: t=[${fmt(clipped.tmin)}, ${fmt(clipped.tmax)}] s · f=[${fmt(clipped.fmin, 1)}, ${fmt(clipped.fmax, 1)}] Hz`;
   if (!fromFields) {
-    setCoach('ROI marcada', 'Ahora pulsa Guardar plantilla. Luego podrás buscar regiones parecidas en el audio.');
-    setStatus('ROI marcada', 'Guarda la plantilla para habilitar la búsqueda por embedding.');
+    setCoach('Plantilla marcada', 'Puedes pulsar Buscar coincidencias directamente, o Agregar plantilla + para guardar esta y marcar otra.');
+    setStatus('Plantilla marcada', 'Busca coincidencias o agrega otra plantilla.');
   }
   drawOverlay();
 }
@@ -823,6 +1180,7 @@ function sortMatchesForTable(matches) {
   const valueFor = (m) => {
     if (key === 'rank') return m._rank;
     if (key === 'etiqueta') return String(m.etiqueta || '').toLowerCase();
+    if (key === 'plantilla') return String(m.templateLabel || '').toLowerCase();
     return Number(m[key]);
   };
   arr.sort((a, b) => {
@@ -863,18 +1221,49 @@ function renderMatchesTable() {
     return;
   }
   tbody.innerHTML = '';
-  sortMatchesForTable(state.matches).slice(0, 80).forEach((m) => {
+  sortMatchesForTable(state.matches).slice(0, 120).forEach((m) => {
     const tr = document.createElement('tr');
     tr.className = 'match-row';
-    tr.innerHTML = `<td>${m._rank}</td><td>${m.score.toFixed(3)}</td><td>${m.tmin.toFixed(2)}</td><td>${m.tmax.toFixed(2)}</td><td>${m.fmin.toFixed(0)}</td><td>${m.fmax.toFixed(0)}</td><td>${escapeHtml(m.etiqueta || '')}</td>`;
-    tr.addEventListener('click', () => {
+    const labelText = escapeHtml(m.etiqueta || m.templateLabel || '');
+    tr.innerHTML = `<td>${m._rank}</td><td class="label-pill-cell"><span class="label-pill editable-label" contenteditable="true" data-template-id="${escapeHtml(m.templateId || '')}" style="--tpl-color:${m.color || '#00e5ff'}">${labelText}</span></td><td>${m.score.toFixed(3)}</td><td>${m.tmin.toFixed(2)}</td><td>${m.tmax.toFixed(2)}</td><td>${m.fmin.toFixed(0)}</td><td>${m.fmax.toFixed(0)}</td>`;
+    tr.addEventListener('click', (ev) => {
+      if (ev.target && ev.target.classList.contains('editable-label')) return;
       el.audioPlayer.currentTime = m.tmin;
       updatePlayhead(true);
       centerOnCurrentTime(true);
-      showToast('Match seleccionado', `t=[${m.tmin.toFixed(2)}, ${m.tmax.toFixed(2)}] s`);
+      if (m.templateId) setActiveTemplate(m.templateId);
+      showToast('Coincidencia seleccionada', `t=[${m.tmin.toFixed(2)}, ${m.tmax.toFixed(2)}] s`);
+    });
+    const labelCell = tr.querySelector('.editable-label');
+    labelCell.addEventListener('keydown', (ev) => {
+      if (ev.key === 'Enter') {
+        ev.preventDefault();
+        labelCell.blur();
+      }
+    });
+    labelCell.addEventListener('blur', () => {
+      const templateId = labelCell.dataset.templateId;
+      const newLabel = cleanLabel(labelCell.textContent || '');
+      updateTemplateLabel(templateId, newLabel);
     });
     tbody.appendChild(tr);
   });
+}
+
+function updateTemplateLabel(templateId, newLabel) {
+  const tpl = state.templates.find(t => t.id === templateId);
+  if (!tpl) return;
+  const finalLabel = cleanLabel(newLabel || tpl.defaultLabel || displayLabelForTemplate(tpl));
+  tpl.etiqueta = finalLabel;
+  for (const m of (tpl.matches || [])) {
+    m.etiqueta = finalLabel;
+    m.templateLabel = finalLabel;
+  }
+  if (tpl.id === state.activeTemplateId && el.roiLabel) el.roiLabel.value = finalLabel;
+  refreshCombinedMatches();
+  renderTemplateNavigator();
+  drawOverlay();
+  showToast('Etiqueta actualizada', `Todos los resultados de ${finalLabel} fueron actualizados.`);
 }
 
 function getExportBaseName() {
@@ -885,54 +1274,56 @@ function getExportBaseName() {
 
 function exportCsv() {
   if (!state.matches.length) return;
-  const header = ['audio','tmin','tmax','fmin','fmax','etiqueta','score','estado'];
+  const header = ['audio','plantilla','tmin','tmax','fmin','fmax','etiqueta','score','estado'];
   const rows = state.matches.map(m => [
     state.file?.name || '',
+    m.templateLabel || '',
     m.tmin.toFixed(6),
     m.tmax.toFixed(6),
     m.fmin.toFixed(3),
     m.fmax.toFixed(3),
-    cleanLabel(m.etiqueta || state.savedRoi?.etiqueta || currentEtiqueta()),
+    cleanLabel(m.etiqueta || m.templateLabel || ''),
     m.score.toFixed(6),
     'candidato'
   ]);
   const csv = [header, ...rows].map(row => row.map(csvCell).join(',')).join('\n');
   const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' });
   downloadBlob(blob, `${getExportBaseName()}.csv`);
-  showToast('CSV exportado', 'Se descargó la tabla de candidatos con la etiqueta.');
+  showToast('CSV exportado', 'Se descargó la tabla de candidatos multi-plantilla.');
 }
-
 
 function exportXlsx() {
   if (!state.matches.length) return;
-  const header = ['audio','tmin','tmax','fmin','fmax','etiqueta','score','estado'];
+  const header = ['audio','plantilla','tmin','tmax','fmin','fmax','etiqueta','score','estado'];
   const rows = state.matches.map(m => [
     state.file?.name || '',
+    m.templateLabel || '',
     Number(m.tmin.toFixed(6)),
     Number(m.tmax.toFixed(6)),
     Number(m.fmin.toFixed(3)),
     Number(m.fmax.toFixed(3)),
-    cleanLabel(m.etiqueta || state.savedRoi?.etiqueta || currentEtiqueta()),
+    cleanLabel(m.etiqueta || m.templateLabel || ''),
     Number(m.score.toFixed(6)),
     'candidato'
   ]);
   const blob = makeXlsxBlob([header, ...rows]);
   downloadBlob(blob, `${getExportBaseName()}.xlsx`);
-  showToast('XLSX exportado', 'Se descargó la tabla de candidatos con la etiqueta.');
+  showToast('XLSX exportado', 'Se descargó la tabla de candidatos multi-plantilla.');
 }
 
 function exportAudacityTxt() {
   if (!state.matches.length) return;
   const lines = [];
-  for (const m of state.matches) {
-    const etiqueta = cleanLabel(m.etiqueta || state.savedRoi?.etiqueta || currentEtiqueta());
+  const ordered = [...state.matches].sort((a, b) => a.tmin - b.tmin || b.score - a.score);
+  for (const m of ordered) {
+    const etiqueta = cleanLabel(m.etiqueta || m.templateLabel || '');
     lines.push(`${m.tmin.toFixed(6)}\t${m.tmax.toFixed(6)}\t${etiqueta}`);
     lines.push(`\\\t${m.fmin.toFixed(6)}\t${m.fmax.toFixed(6)}`);
   }
   const txt = lines.join('\r\n') + '\r\n';
   const blob = new Blob([txt], { type: 'text/plain;charset=utf-8' });
   downloadBlob(blob, `${getExportBaseName()}.txt`);
-  showToast('TXT Audacity exportado', 'Se descargó el archivo de etiquetas en formato Audacity.');
+  showToast('TXT Audacity exportado', 'Se descargó el archivo de etiquetas multi-plantilla.');
 }
 
 function xmlEscape(value) {
@@ -1070,84 +1461,243 @@ function applyRoiFromFields() {
     fmin: Number(el.roiFmin.value),
     fmax: Number(el.roiFmax.value),
   }, true);
-  showToast('ROI aplicada', 'La caja roja se actualizó con los valores del panel.');
 }
 
-function saveRoi() {
-  if (!state.roi) return;
+function saveCurrentTemplate({ silent = false } = {}) {
+  if (!state.display) return null;
+  // Guardar/actualizar plantilla también toma los valores editados a mano.
+  applyRoiFromFields();
+  if (!state.roi) return null;
   const widthSec = state.roi.tmax - state.roi.tmin;
   const heightHz = state.roi.fmax - state.roi.fmin;
   if (widthSec <= 0 || heightHz <= 0) {
-    showToast('ROI inválida', 'La caja debe tener ancho temporal y alto frecuencial.');
-    return;
+    showToast('Plantilla inválida', 'La caja debe tener ancho temporal y alto frecuencial.');
+    return null;
   }
-  state.savedRoi = { ...state.roi, etiqueta: currentEtiqueta() };
-  el.btnSearch.disabled = false;
-  setStatus('Plantilla guardada', 'Ajusta los parámetros y pulsa Buscar similares.');
-  setCoach('Busca similares', 'Puedes dejar activo el autoajuste para proponer score mínimo y separación entre ventanas según esta ROI.');
-  showToast('Plantilla guardada', 'Ahora puedes buscar similares por embedding.');
-  openSearchStep();
+
+  let tpl = getActiveTemplate();
+  const isNew = !tpl;
+  if (!tpl) {
+    const id = makeTemplateId();
+    const defaultLabel = `fonotipo${state.templateCounter}`;
+    tpl = {
+      id,
+      defaultLabel,
+      etiqueta: cleanLabel(currentEtiqueta() || defaultLabel),
+      color: colorForTemplateIndex(state.templates.length),
+      metric: el.metricSelect.value || 'coseno',
+      scoreThreshold: Number(el.scoreThreshold.value || 0.85),
+      strideSec: Number(el.strideSec.value || 0.10),
+      autoAdjust: true,
+      showMatches: true,
+      matches: [],
+      hasSearched: false,
+    };
+    state.templates.push(tpl);
+    state.activeTemplateId = id;
+  }
+
+  const roiChanged = !isNew && !sameRoi(state.roi, tpl);
+  const wasDraft = Boolean(tpl.isDraft);
+  tpl.tmin = state.roi.tmin;
+  tpl.tmax = state.roi.tmax;
+  tpl.fmin = state.roi.fmin;
+  tpl.fmax = state.roi.fmax;
+  if (roiChanged || wasDraft) {
+    tpl.matches = [];
+    tpl.hasSearched = false;
+  }
+  tpl.etiqueta = cleanLabel(currentEtiqueta() || tpl.etiqueta || tpl.defaultLabel);
+  for (const m of (tpl.matches || [])) {
+    m.etiqueta = tpl.etiqueta;
+    m.templateLabel = tpl.etiqueta;
+  }
+  tpl.metric = el.metricSelect.value || tpl.metric || 'coseno';
+  tpl.scoreThreshold = Number(el.scoreThreshold.value || tpl.scoreThreshold || 0.85);
+  tpl.strideSec = Number(el.strideSec.value || tpl.strideSec || 0.10);
+  tpl.autoAdjust = Boolean(el.autoAdjustParams?.checked ?? tpl.autoAdjust);
+  tpl.showMatches = Boolean(el.showActiveMatches?.checked ?? tpl.showMatches);
+  tpl.isDraft = false;
+
+  state.savedRoi = { ...state.roi, etiqueta: tpl.etiqueta };
+  updateSearchButtonsState();
+  if (el.btnRemoveTemplate) el.btnRemoveTemplate.disabled = false;
+  renderTemplateNavigator();
+  applyTemplateToFields(tpl);
+  refreshCombinedMatches();
+  drawOverlay();
+
+  if (!silent) {
+    showToast(isNew ? 'Plantilla agregada' : 'Plantilla actualizada', `${displayLabelForTemplate(tpl)} quedó guardada.`);
+  }
+  return tpl;
 }
 
-function clearRoi() {
+function saveRoi() {
+  // Se mantiene como compatibilidad interna: guarda/actualiza sin saltar a búsqueda.
+  const tpl = saveCurrentTemplate({ silent: false });
+  if (!tpl) return;
+  setStatus('Plantilla guardada', 'Puedes agregar otra plantilla o buscar coincidencias.');
+  setCoach('Plantilla guardada', 'Pulsa Agregar plantilla + para continuar marcando fonotipos, o Buscar coincidencias para procesar solo las plantillas pendientes.');
+  openRoiStep();
+}
+
+function addTemplateAndAdvance() {
+  const tpl = saveCurrentTemplate({ silent: false });
+  if (!tpl) return;
+  tpl.isDraft = false;
+  const draft = createDraftTemplate();
   state.roi = null;
-  state.savedRoi = null;
-  state.matches = [];
   el.roiTmin.value = 0;
   el.roiTmax.value = 0;
   el.roiFmin.value = 0;
   el.roiFmax.value = 0;
-  if (el.roiLabel) el.roiLabel.value = '';
-  el.roiSummary.textContent = 'Sin ROI.';
-  el.matchSummary.textContent = 'Sin coincidencias.';
-  el.btnSaveRoi.disabled = true;
-  el.btnClearRoi.disabled = true;
-  el.btnSearch.disabled = true;
-  el.btnClearMatches.disabled = true;
-  el.btnExportCsv.disabled = true;
-  if (el.btnExportXlsx) el.btnExportXlsx.disabled = true;
-  if (el.btnExportTxt) el.btnExportTxt.disabled = true;
-  clearMatchesTable();
+  if (el.roiLabel) el.roiLabel.value = displayLabelForTemplate(draft);
+  el.roiSummary.textContent = `Nueva plantilla: ${displayLabelForTemplate(draft)}. Dibuja una caja.`;
+  renderTemplateNavigator();
+  drawOverlay();
+  setStatus('Nueva plantilla', 'Dibuja una nueva caja y pulsa Agregar plantilla + para guardarla.');
+  setCoach('Nueva plantilla', 'La plantilla anterior quedó guardada. Marca otro fonotipo o pulsa Buscar coincidencias para procesar las plantillas pendientes.');
+  openRoiStep();
+}
+function searchPendingTemplatesFromTemplatePanel() {
+  // Antes de buscar, guardamos la caja activa si es válida, para no perder la última plantilla marcada.
+  if (state.display) {
+    applyRoiFromFields();
+  }
+  if (isRoiValid(state.roi)) {
+    saveCurrentTemplate({ silent: true });
+  }
+
+  const pendingTemplates = getPendingTemplates();
+  if (!pendingTemplates.length) {
+    if (!state.templates.some(isTemplateValid)) {
+      showToast('Sin plantillas válidas', 'Marca al menos una plantilla antes de buscar.');
+      return;
+    }
+    showToast('Sin plantillas nuevas', 'No hay plantillas nuevas pendientes. Usa el panel Búsqueda para recalcular la plantilla activa.');
+    setCoach('Sin pendientes', 'Tus búsquedas anteriores se mantienen. Para recalcular una plantilla, selecciónala en Búsqueda y pulsa Buscar similares.');
+    openSearchStep();
+    return;
+  }
+
+  searchEmbedding({ templateIds: pendingTemplates.map(t => t.id), pendingBatch: true });
+}
+function clearRoi() {
+  const tpl = getActiveTemplate();
+  if (tpl) {
+    tpl.matches = [];
+    tpl.tmin = 0;
+    tpl.tmax = 0;
+    tpl.fmin = 0;
+    tpl.fmax = 0;
+    state.roi = null;
+  } else {
+    state.roi = null;
+  }
+  el.roiTmin.value = 0;
+  el.roiTmax.value = 0;
+  el.roiFmin.value = 0;
+  el.roiFmax.value = 0;
+  el.roiSummary.textContent = 'Plantilla limpia. Dibuja una nueva caja.';
+  if (el.btnSaveRoi) el.btnSaveRoi.disabled = true;
+  refreshCombinedMatches();
   drawOverlay();
   setStatus('Marca plantilla', 'Arrastra sobre el espectrograma para encerrar el patrón que quieres buscar.');
-  setCoach('Marca una plantilla', 'Dibuja una caja roja sobre el sonido que quieres encontrar en el resto del audio.');
+  setCoach('Marca una plantilla', 'Dibuja una caja sobre el sonido que quieres encontrar.');
   openRoiStep();
 }
 
-function searchEmbedding() {
-  if (!state.savedRoi || !state.worker) return;
-  state.savedRoi.etiqueta = currentEtiqueta();
-  const metric = el.metricSelect.value;
-  const scoreThreshold = Number(el.scoreThreshold.value);
-  const strideSec = Number(el.strideSec.value);
-  const autoAdjust = Boolean(el.autoAdjustParams?.checked);
+function searchEmbedding(options = {}) {
+  if (!state.worker) return;
+  if (state.display) {
+    applyRoiFromFields();
+  }
+  if (isRoiValid(state.roi)) {
+    saveCurrentTemplate({ silent: true });
+  }
+  if (!state.templates.length) return;
+  syncActiveTemplateParamsFromUi();
+
+  const forceAll = Boolean(options.all);
+  const forceAuto = Boolean(options.forceAuto);
+  const explicitIds = Array.isArray(options.templateIds) ? options.templateIds : null;
+  const firstRun = !state.hasSearched;
+  let templatesToSearch;
+
+  if (explicitIds) {
+    const wanted = new Set(explicitIds);
+    templatesToSearch = state.templates.filter(t => wanted.has(t.id) && isTemplateValid(t));
+  } else if (forceAll) {
+    templatesToSearch = state.templates.filter(isTemplateValid);
+  } else if (firstRun) {
+    templatesToSearch = state.templates.filter(isTemplateValid);
+  } else {
+    templatesToSearch = [getActiveTemplate()].filter(isTemplateValid);
+  }
+
+  if (!templatesToSearch.length) {
+    showToast('Sin plantillas válidas', 'Guarda al menos una plantilla antes de buscar.');
+    return;
+  }
+
+  const isBatchSearch = forceAll || firstRun || templatesToSearch.length > 1 || Boolean(options.pendingBatch);
+  state.currentSearchAll = isBatchSearch;
+  state.forceAutoSearch = forceAuto;
+  if (forceAuto) {
+    templatesToSearch.forEach(t => { t.autoAdjust = true; });
+  }
+  state.searchQueue = templatesToSearch.map(t => t.id);
+  state.searchResultsAccumulator = [];
+
   showProcessing(
-    autoAdjust ? 'Autoajustando y buscando similares' : 'Buscando similares',
-    autoAdjust ? 'Estimando separación y codo de scores...' : 'Comparando embeddings...',
+    isBatchSearch ? 'Buscando plantillas pendientes' : 'Buscando similares',
+    isBatchSearch ? 'Procesando solo las plantillas nuevas o pendientes...' : 'Comparando embeddings...',
     10
   );
-  setStatus('Buscando', autoAdjust ? 'Autoajustando parámetros y procesando candidatos.' : 'Procesando candidatos en segundo plano.');
+  setStatus('Buscando', isBatchSearch ? 'Se conservan las coincidencias ya calculadas de otras plantillas.' : 'Procesando plantilla activa.');
+  startNextSearchInQueue();
+}
+function startNextSearchInQueue() {
+  const id = state.searchQueue.shift();
+  const tpl = state.templates.find(t => t.id === id);
+  if (!tpl) {
+    if (state.searchQueue.length) startNextSearchInQueue();
+    return;
+  }
+  state.currentSearchTemplateId = id;
+  const roi = {
+    tmin: tpl.tmin,
+    tmax: tpl.tmax,
+    fmin: tpl.fmin,
+    fmax: tpl.fmax,
+    etiqueta: displayLabelForTemplate(tpl),
+  };
+  const useAuto = Boolean(state.forceAutoSearch) || ((!state.hasSearched && el.autoAdjustParams?.checked) || Boolean(tpl.autoAdjust && el.autoAdjustParams?.checked));
+  postSearchStatus(`Buscando ${displayLabelForTemplate(tpl)}...`);
   state.worker.postMessage({
     type: 'search-embedding',
-    roi: state.savedRoi,
-    metric,
-    scoreThreshold,
-    strideSec,
-    autoAdjust,
+    roi,
+    metric: tpl.metric || el.metricSelect.value || 'coseno',
+    scoreThreshold: Number(tpl.scoreThreshold ?? el.scoreThreshold.value ?? 0.85),
+    strideSec: Number(tpl.strideSec ?? el.strideSec.value ?? 0.10),
+    autoAdjust: useAuto,
     maxMatches: CONFIG.maxMatchesToStore,
   });
 }
 
+function postSearchStatus(text) {
+  updateProcessing(text, 12);
+}
+
 function clearMatches() {
-  state.matches = [];
-  el.matchSummary.textContent = 'Sin coincidencias.';
-  el.btnClearMatches.disabled = true;
-  el.btnExportCsv.disabled = true;
-  if (el.btnExportXlsx) el.btnExportXlsx.disabled = true;
-  if (el.btnExportTxt) el.btnExportTxt.disabled = true;
-  clearMatchesTable();
+  const tpl = getActiveTemplate();
+  if (!tpl) return;
+  tpl.matches = [];
+  refreshCombinedMatches();
+  el.matchSummary.textContent = 'Coincidencias de la plantilla activa limpiadas.';
   drawOverlay();
-  showToast('Coincidencias limpiadas', 'Se retiraron las cajas azules.');
+  showToast('Coincidencias limpiadas', `Se retiraron las cajas de ${displayLabelForTemplate(tpl)}.`);
 }
 
 function setScoreControls(value) {
@@ -1213,7 +1763,7 @@ function attachEvents() {
     const roi = rectToRoi(state.startX, state.startY, x, y);
     const ctx = el.overlayCanvas.getContext('2d');
     drawOverlay();
-    drawRoi(ctx, roi, 'ROI', '#ef4444', 'rgba(239,68,68,0.18)', 3);
+    drawRoi(ctx, roi, 'plantilla', '#ef4444', 'rgba(239,68,68,0.18)', 3, false);
   });
   const finishDrag = (ev) => {
     if (!state.dragging || !state.display) return;
@@ -1230,14 +1780,26 @@ function attachEvents() {
   el.overlayCanvas.addEventListener('mouseup', finishDrag);
   el.overlayCanvas.addEventListener('mouseleave', finishDrag);
 
-  el.btnApplyRoi.addEventListener('click', applyRoiFromFields);
-  el.btnSaveRoi.addEventListener('click', saveRoi);
-  el.btnClearRoi.addEventListener('click', clearRoi);
+  if (el.btnApplyRoi) el.btnApplyRoi.addEventListener('click', applyRoiFromFields);
+  if (el.btnSaveRoi) el.btnSaveRoi.addEventListener('click', saveRoi);
+  if (el.btnClearRoi) el.btnClearRoi.addEventListener('click', clearRoi);
+  if (el.btnAddTemplate) el.btnAddTemplate.addEventListener('click', addTemplateAndAdvance);
+  if (el.btnRemoveTemplate) el.btnRemoveTemplate.addEventListener('click', removeActiveTemplate);
+  if (el.btnSearchAllTemplates) el.btnSearchAllTemplates.addEventListener('click', searchPendingTemplatesFromTemplatePanel);
+  if (el.btnPrevTemplate) el.btnPrevTemplate.addEventListener('click', () => goTemplate(-1));
+  if (el.btnNextTemplate) el.btnNextTemplate.addEventListener('click', () => goTemplate(1));
+  if (el.btnPrevSearchTemplate) el.btnPrevSearchTemplate.addEventListener('click', () => goTemplate(-1));
+  if (el.btnNextSearchTemplate) el.btnNextSearchTemplate.addEventListener('click', () => goTemplate(1));
   el.btnSearch.addEventListener('click', searchEmbedding);
   el.btnClearMatches.addEventListener('click', clearMatches);
   el.btnExportCsv.addEventListener('click', exportCsv);
   if (el.btnExportXlsx) el.btnExportXlsx.addEventListener('click', exportXlsx);
   if (el.btnExportTxt) el.btnExportTxt.addEventListener('click', exportAudacityTxt);
+  [el.metricSelect, el.scoreThreshold, el.scoreThresholdInput, el.strideSec, el.strideSecInput, el.roiLabel].forEach(node => {
+    if (node) node.addEventListener('change', syncActiveTemplateParamsFromUi);
+  });
+  if (el.showActiveMatches) el.showActiveMatches.addEventListener('change', () => { syncActiveTemplateParamsFromUi(); drawOverlay(); });
+  if (el.autoAdjustParams) el.autoAdjustParams.addEventListener('change', syncActiveTemplateParamsFromUi);
   el.accordionPanels.forEach(panel => {
     const head = panel.querySelector('.accordion-head');
     if (head) head.addEventListener('click', () => togglePanel(panel.dataset.panel));

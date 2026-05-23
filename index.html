@@ -13,7 +13,7 @@
         <img class="brand-logo" src="https://jocotoco.org.ec/dct/tmp_adjuntos/noEn/000/073/MatrizDatos_1757014841Logo-jocotoco2025.svg" alt="Logo Jocotoco" />
         <div>
           <h1>Bioacoustic Template Labeler</h1>
-          <p>ROI manual + búsqueda por similitud de embedding en espectrogramas</p>
+          <p>Plantillas acústicas + búsqueda por similitud de embedding en espectrogramas</p>
         </div>
       </div>
       <div class="top-actions">
@@ -98,34 +98,41 @@
 
         <section class="panel-card accordion-panel is-collapsed" data-panel="roi">
           <button class="accordion-head" type="button" aria-expanded="false">
-            <span class="section-title">ROI plantilla</span>
+            <span class="section-title">Plantilla</span>
             <span class="accordion-icon">▾</span>
           </button>
           <div class="accordion-content">
+            <div id="templateChips" class="template-chips" aria-label="Plantillas"></div>
             <div class="field-grid">
+              <label class="full-row">Etiqueta (opcional)
+                <input id="roiLabel" class="roi-label-input" type="text" placeholder="Ej. especie, código o clase" />
+              </label>
               <label>tmin <input id="roiTmin" type="number" step="0.001" value="0" /></label>
               <label>tmax <input id="roiTmax" type="number" step="0.001" value="0" /></label>
               <label>fmin <input id="roiFmin" type="number" step="1" value="0" /></label>
               <label>fmax <input id="roiFmax" type="number" step="1" value="0" /></label>
-              <label class="full-row">Etiqueta (opcional)
-                <input id="roiLabel" class="roi-label-input" type="text" placeholder="Ej. especie, código o clase" />
-              </label>
             </div>
-            <div class="button-row">
-              <button id="btnApplyRoi" class="btn btn-small" disabled>Aplicar ROI</button>
-              <button id="btnSaveRoi" class="btn btn-warning btn-small" disabled>Guardar plantilla</button>
+            <div class="button-row template-main-actions">
+              <button id="btnRemoveTemplate" class="btn btn-danger btn-small" disabled>Quitar plantilla −</button>
+              <button id="btnAddTemplate" class="btn btn-primary btn-small" disabled>Agregar plantilla +</button>
             </div>
-            <button id="btnClearRoi" class="btn btn-ghost full" disabled>Limpiar ROI</button>
-            <div id="roiSummary" class="mini-summary">Sin ROI.</div>
+            <button id="btnSearchAllTemplates" class="btn btn-success search-all-btn" disabled>Buscar coincidencias</button>
+            <div id="roiSummary" class="mini-summary">Sin plantilla.</div>
+            <div class="template-carousel template-carousel-bottom">
+              <button id="btnPrevTemplate" class="carousel-btn" type="button" aria-label="Plantilla anterior">‹</button>
+              <div id="templatePager" class="template-pager">Sin plantillas</div>
+              <button id="btnNextTemplate" class="carousel-btn" type="button" aria-label="Plantilla siguiente">›</button>
+            </div>
           </div>
         </section>
 
         <section class="panel-card accordion-panel is-collapsed" data-panel="search">
           <button class="accordion-head" type="button" aria-expanded="false">
-            <span class="section-title">Búsqueda por embedding</span>
+            <span class="section-title">Búsqueda</span>
             <span class="accordion-icon">▾</span>
           </button>
           <div class="accordion-content">
+            <div id="searchTemplateChips" class="template-chips search-template-chips" aria-label="Plantillas para búsqueda"></div>
             <label class="control-label"><span class="label-row">Métrica <button type="button" class="info-dot" data-tip="Define cómo se compara la plantilla con cada ventana candidata. Coseno/correlación comparan forma; euclidiana normalizada compara distancia convertida a similitud.">i</button></span>
               <select id="metricSelect">
                 <option value="coseno" selected>coseno</option>
@@ -145,16 +152,28 @@
                 <input id="strideSecInput" class="number-compact" type="number" min="0.01" max="1.00" step="0.01" value="0.10" />
               </div>
             </label>
-            <label class="checkline auto-adjust-row">
-              <input id="autoAdjustParams" type="checkbox" checked />
-              Autoajustar parámetros al buscar
-              <button type="button" class="info-dot" data-tip="Antes de buscar, estima la separación según la duración de la ROI y propone el score mínimo usando el codo de la curva de similitudes. Puedes desactivarlo para usar valores manuales.">i</button>
-            </label>
+            <div class="check-grid-row">
+              <label class="checkline auto-adjust-row compact-check">
+                <input id="autoAdjustParams" type="checkbox" checked />
+                Autoajustar
+                <button type="button" class="info-dot" data-tip="En la primera búsqueda propone automáticamente score y separación para cada plantilla. Después se desmarca para permitir ajustes manuales.">i</button>
+              </label>
+              <label class="checkline auto-adjust-row compact-check">
+                <input id="showActiveMatches" type="checkbox" checked />
+                Ver cajas
+                <button type="button" class="info-dot" data-tip="Muestra u oculta en el espectrograma las cajas inferidas de la plantilla activa. No borra resultados ni afecta exportaciones.">i</button>
+              </label>
+            </div>
             <div class="button-row">
               <button id="btnSearch" class="btn btn-success" disabled>Buscar similares</button>
               <button id="btnClearMatches" class="btn btn-ghost" disabled>Limpiar</button>
             </div>
             <div id="matchSummary" class="mini-summary">Sin coincidencias.</div>
+            <div class="template-carousel search-carousel-bottom">
+              <button id="btnPrevSearchTemplate" class="carousel-btn" type="button" aria-label="Plantilla anterior">‹</button>
+              <div id="searchTemplatePager" class="template-pager">Sin plantillas</div>
+              <button id="btnNextSearchTemplate" class="carousel-btn" type="button" aria-label="Plantilla siguiente">›</button>
+            </div>
           </div>
         </section>
 
@@ -174,12 +193,12 @@
                 <thead>
                   <tr>
                     <th class="sortable" data-sort="rank">#</th>
+                    <th class="sortable" data-sort="etiqueta">etiqueta</th>
                     <th class="sortable" data-sort="score">score</th>
                     <th class="sortable" data-sort="tmin">tmin</th>
                     <th class="sortable" data-sort="tmax">tmax</th>
                     <th class="sortable" data-sort="fmin">fmin</th>
                     <th class="sortable" data-sort="fmax">fmax</th>
-                    <th class="sortable" data-sort="etiqueta">etiqueta</th>
                   </tr>
                 </thead>
                 <tbody>
