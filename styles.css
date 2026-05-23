@@ -12,7 +12,7 @@
   --danger: #dc2626;
   --shadow: 0 14px 34px rgba(15, 23, 42, 0.10);
   --radius: 18px;
-  --freq-axis-w: 108px;
+  --freq-axis-w: 96px;
   --time-axis-h: 34px;
 }
 
@@ -169,7 +169,7 @@ button:disabled { opacity: 0.45; cursor: not-allowed; }
   flex: 1;
   overflow-x: auto;
   overflow-y: hidden;
-  background: #111827;
+  background: #f8fafc;
   min-height: 0;
   border-bottom: 1px solid var(--border);
   scrollbar-gutter: stable;
@@ -177,20 +177,20 @@ button:disabled { opacity: 0.45; cursor: not-allowed; }
 .spectrogram-viewport.empty { display: grid; place-items: center; }
 .empty-viewer { color: #cbd5e1; text-align: center; }
 .empty-icon { font-size: 58px; opacity: 0.8; }
-.spectrogram-stage { position: relative; background: #111; }
+.spectrogram-stage { position: relative; background: #f8fafc; }
 .freq-axis {
   position: sticky;
   left: 0;
   top: 0;
-  background: #f7f7f7;
+  background: #f8fafc;
   z-index: 8;
   box-shadow: 1px 0 0 var(--border);
 }
-.canvas-layer { position: absolute; left: var(--freq-axis-w); top: 0; }
+.canvas-layer { position: absolute; left: var(--freq-axis-w); top: 0; background: #111827; }
 #spectrogramCanvas { position: absolute; left: 0; top: 0; image-rendering: auto; }
 #overlayCanvas { position: absolute; left: 0; top: 0; cursor: crosshair; }
 #playhead { position: absolute; top: 0; left: 0; width: 2px; background: #ef4444; pointer-events: none; box-shadow: 0 0 0 1px rgba(255,255,255,0.55); }
-.time-axis { position: absolute; left: var(--freq-axis-w); background: #f7f7f7; z-index: 4; }
+.time-axis { position: absolute; left: var(--freq-axis-w); background: #f8fafc; z-index: 4; }
 
 .spectrogram-player {
   flex-shrink: 0;

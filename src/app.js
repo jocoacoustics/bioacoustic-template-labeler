@@ -12,8 +12,8 @@ const CONFIG = {
   embSize: 48,
   maxMatchesToDraw: 300,
   maxMatchesToStore: 500,
-  freqAxisW: 108,
-  timeAxisH: 30,
+  freqAxisW: 96,
+  timeAxisH: 34,
   templateColors: ['#00e5ff', '#39ff14', '#2979ff', '#ffd60a', '#ff4fd8', '#7c4dff', '#00f5a0', '#4cc9f0', '#c6ff00', '#ff66c4'],
 };
 
@@ -361,12 +361,22 @@ function displayLabelForTemplate(tpl) {
 function syncActiveTemplateParamsFromUi() {
   const tpl = getActiveTemplate();
   if (!tpl) return;
+
   tpl.metric = el.metricSelect.value;
   tpl.scoreThreshold = Number(el.scoreThreshold.value);
   tpl.strideSec = Number(el.strideSec.value);
   tpl.autoAdjust = Boolean(el.autoAdjustParams?.checked);
   tpl.showMatches = Boolean(el.showActiveMatches?.checked);
-  tpl.etiqueta = cleanLabel(el.roiLabel?.value || tpl.etiqueta || tpl.defaultLabel || '');
+
+  // Mantener sincronía bidireccional de etiquetas:
+  // - tabla -> plantilla ya usa updateTemplateLabel()
+  // - plantilla -> tabla debe propagar a matches, chips, cajas y exportación
+  const currentLabel = displayLabelForTemplate(tpl);
+  const nextLabel = cleanLabel(el.roiLabel?.value || tpl.etiqueta || tpl.defaultLabel || '');
+
+  if (nextLabel && nextLabel !== currentLabel) {
+    updateTemplateLabel(tpl.id, nextLabel, { silent: true });
+  }
 }
 
 function applyTemplateToFields(tpl) {
@@ -789,10 +799,8 @@ function renderSpectrogramImage(buffer, width, height) {
     c.height = height;
   }
 
-  el.freqAxisCanvas.width = CONFIG.freqAxisW;
-  el.freqAxisCanvas.height = height;
-  el.timeAxisCanvas.width = width;
-  el.timeAxisCanvas.height = CONFIG.timeAxisH;
+  // Los ejes se configuran en layoutSpectrogramStage() con alta densidad de píxeles.
+  // No se dejan aquí con el tamaño natural porque el navegador los escala y las letras quedan borrosas.
 
   const ctx = el.spectrogramCanvas.getContext('2d');
   const imageData = new ImageData(new Uint8ClampedArray(buffer), width, height);
@@ -804,18 +812,41 @@ function renderSpectrogramImage(buffer, width, height) {
   updatePlayhead(true);
 }
 
+function setupHiDpiCanvas(canvas, cssWidth, cssHeight) {
+  const rawDpr = window.devicePixelRatio || 1;
+  const maxCanvasSide = 32767;
+  const safeDpr = Math.max(1, Math.min(
+    rawDpr,
+    maxCanvasSide / Math.max(1, cssWidth),
+    maxCanvasSide / Math.max(1, cssHeight)
+  ));
+  canvas.width = Math.max(1, Math.round(cssWidth * safeDpr));
+  canvas.height = Math.max(1, Math.round(cssHeight * safeDpr));
+  canvas.dataset.dpr = String(safeDpr);
+  return safeDpr;
+}
+
+function resetHiDpiContext(ctx, canvas, cssWidth, cssHeight) {
+  const dpr = Number(canvas.dataset.dpr || 1);
+  ctx.setTransform(1, 0, 0, 1, 0, 0);
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  return { dpr, W: cssWidth, H: cssHeight };
+}
+
 function layoutSpectrogramStage() {
   if (!state.display) return;
   const width = state.display.width;
   const naturalHeight = state.display.height;
 
-  // El visor solo debe tener scroll horizontal. Si el alto natural no cabe,
-  // se escala visualmente el canvas para reservar siempre el eje temporal.
+  // El visor usa todo el alto útil: espectrograma + eje temporal + barra horizontal.
+  // clientHeight ya descuenta la barra horizontal nativa; no restamos margen extra.
   const viewportH = Math.max(260, el.spectrogramViewport.clientHeight || naturalHeight + CONFIG.timeAxisH);
-  const availableForSpec = Math.max(220, viewportH - CONFIG.timeAxisH - 18);
-  const visualHeight = Math.min(naturalHeight, availableForSpec);
+  const availableForSpec = Math.max(220, viewportH - CONFIG.timeAxisH);
+  const visualHeight = availableForSpec;
 
   state.visualHeight = visualHeight;
+  state.visualScaleY = visualHeight / Math.max(1, naturalHeight);
 
   el.spectrogramStage.style.width = `${CONFIG.freqAxisW + width}px`;
   el.spectrogramStage.style.height = `${visualHeight + CONFIG.timeAxisH}px`;
@@ -830,10 +861,12 @@ function layoutSpectrogramStage() {
 
   el.freqAxisCanvas.style.width = `${CONFIG.freqAxisW}px`;
   el.freqAxisCanvas.style.height = `${visualHeight}px`;
+  setupHiDpiCanvas(el.freqAxisCanvas, CONFIG.freqAxisW, visualHeight);
 
   el.timeAxisCanvas.style.width = `${width}px`;
   el.timeAxisCanvas.style.height = `${CONFIG.timeAxisH}px`;
   el.timeAxisCanvas.style.top = `${visualHeight}px`;
+  setupHiDpiCanvas(el.timeAxisCanvas, width, CONFIG.timeAxisH);
 
   el.playhead.style.height = `${visualHeight}px`;
 }
@@ -893,45 +926,54 @@ function drawTimeAxis() {
   const ctx = el.timeAxisCanvas.getContext('2d');
   const W = state.display.width;
   const H = CONFIG.timeAxisH;
-  ctx.clearRect(0, 0, W, H);
-  ctx.fillStyle = '#f7f7f7';
+  resetHiDpiContext(ctx, el.timeAxisCanvas, W, H);
+
+  ctx.fillStyle = '#f8fafc';
   ctx.fillRect(0, 0, W, H);
-  ctx.strokeStyle = '#222';
+  ctx.strokeStyle = '#cbd5e1';
   ctx.lineWidth = 1;
   ctx.beginPath();
   ctx.moveTo(0, 0.5);
   ctx.lineTo(W, 0.5);
   ctx.stroke();
-  ctx.fillStyle = '#111';
-  ctx.font = '12px Arial';
-  ctx.textAlign = 'center';
+
+  ctx.fillStyle = '#334155';
+  ctx.font = '12px Inter, Arial, sans-serif';
   ctx.textBaseline = 'top';
   const step = chooseTimeStep(state.display.duration);
   for (let t = 0; t <= state.display.duration + 1e-9; t += step) {
     const x = timeToX(t);
+    ctx.strokeStyle = '#cbd5e1';
     ctx.beginPath();
     ctx.moveTo(x + 0.5, 0);
-    ctx.lineTo(x + 0.5, 8);
+    ctx.lineTo(x + 0.5, 7);
     ctx.stroke();
-    ctx.fillText(prettyTime(t), x, 10);
+
+    if (x < 22) ctx.textAlign = 'left';
+    else if (x > W - 28) ctx.textAlign = 'right';
+    else ctx.textAlign = 'center';
+    ctx.fillText(prettyTime(t), clamp(x, 2, W - 2), 10);
   }
 }
 
 function drawFreqAxis() {
   const ctx = el.freqAxisCanvas.getContext('2d');
   const W = CONFIG.freqAxisW;
-  const H = state.display.height;
-  ctx.clearRect(0, 0, W, H);
-  ctx.fillStyle = '#f7f7f7';
+  const H = state.visualHeight || state.display.height;
+  const scaleY = H / Math.max(1, state.display.height);
+  resetHiDpiContext(ctx, el.freqAxisCanvas, W, H);
+
+  ctx.fillStyle = '#f8fafc';
   ctx.fillRect(0, 0, W, H);
-  ctx.strokeStyle = '#222';
+  ctx.strokeStyle = '#cbd5e1';
   ctx.lineWidth = 1;
   ctx.beginPath();
   ctx.moveTo(W - 0.5, 0);
   ctx.lineTo(W - 0.5, H);
   ctx.stroke();
-  ctx.fillStyle = '#111';
-  ctx.font = '12px Arial';
+
+  ctx.fillStyle = '#334155';
+  ctx.font = '11.5px Inter, Arial, sans-serif';
   ctx.textAlign = 'right';
   ctx.textBaseline = 'middle';
 
@@ -941,21 +983,25 @@ function drawFreqAxis() {
   if (!ticks.some(f => Math.abs(f - state.display.fmax) < 1e-6)) ticks.push(state.display.fmax);
 
   for (const f of ticks) {
-    const yRaw = freqToY(f);
+    const yRawNatural = freqToY(f);
+    const yRaw = yRawNatural * scaleY;
     const y = clamp(yRaw, 12, H - 12);
+    ctx.strokeStyle = '#cbd5e1';
     ctx.beginPath();
-    ctx.moveTo(W - 8, yRaw + 0.5);
+    ctx.moveTo(W - 7, yRaw + 0.5);
     ctx.lineTo(W, yRaw + 0.5);
     ctx.stroke();
-    ctx.fillText(prettyFreq(f), W - 10, y);
+    ctx.fillStyle = '#334155';
+    ctx.fillText(prettyFreq(f), W - 9, y);
   }
 
   ctx.save();
-  ctx.translate(13, H / 2);
+  ctx.translate(12, H / 2);
   ctx.rotate(-Math.PI / 2);
   ctx.fillStyle = '#64748b';
-  ctx.font = '11px Arial';
+  ctx.font = '11px Inter, Arial, sans-serif';
   ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
   ctx.fillText('Frecuencia', 0, 0);
   ctx.restore();
 }
@@ -1250,7 +1296,7 @@ function renderMatchesTable() {
   });
 }
 
-function updateTemplateLabel(templateId, newLabel) {
+function updateTemplateLabel(templateId, newLabel, options = {}) {
   const tpl = state.templates.find(t => t.id === templateId);
   if (!tpl) return;
   const finalLabel = cleanLabel(newLabel || tpl.defaultLabel || displayLabelForTemplate(tpl));
@@ -1263,7 +1309,9 @@ function updateTemplateLabel(templateId, newLabel) {
   refreshCombinedMatches();
   renderTemplateNavigator();
   drawOverlay();
-  showToast('Etiqueta actualizada', `Todos los resultados de ${finalLabel} fueron actualizados.`);
+  if (!options.silent) {
+    showToast('Etiqueta actualizada', `Todos los resultados de ${finalLabel} fueron actualizados.`);
+  }
 }
 
 function getExportBaseName() {
