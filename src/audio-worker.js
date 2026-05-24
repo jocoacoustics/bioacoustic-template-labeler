@@ -336,7 +336,9 @@ function searchEmbedding(msg) {
   if (!STORE.Sdb) throw new Error('No hay espectrograma en memoria.');
   const roi = msg.roi;
   const metric = msg.metric || 'coseno';
-  const autoAdjust = Boolean(msg.autoAdjust);
+  const autoAdjustMode = normalizeAutoAdjustMode(msg.autoAdjustMode || (msg.autoAdjust ? 'conservador' : 'none'));
+  const autoAdjust = autoAdjustMode !== 'none';
+  const expertParams = msg.expertParams || {};
   let threshold = Number(msg.scoreThreshold ?? 0.85);
   let strideSec = Number(msg.strideSec ?? 0.10);
   const maxMatches = Number(msg.maxMatches ?? 500);
@@ -415,7 +417,8 @@ function searchEmbedding(msg) {
   const validCandidates = candidates.filter(m => Number.isFinite(m.score) && m.score > 0);
   const manualSepFrames = Math.max(1, Math.round(w * 0.5));
   const autoSepFrames = autoMinSeparationFrames(w, roiDuration);
-  const minSepFrames = autoAdjust ? autoSepFrames : manualSepFrames;
+  const groupFactor = autoAdjust && expertParams && expertParams.enabled ? clamp(Number(expertParams.groupFactor || 1), 0.40, 2.00) : 1;
+  const minSepFrames = autoAdjust ? Math.max(1, Math.round(autoSepFrames * groupFactor)) : manualSepFrames;
 
   // Primero convertimos la curva densa de scores en eventos/picos temporales.
   // Esto evita que ventanas consecutivas de un mismo evento generen decenas de cajas.
@@ -425,31 +428,37 @@ function searchEmbedding(msg) {
   let rankedForThreshold = rankedAll;
   let targetMin = null;
   let targetMax = null;
+  let softThreshold = threshold;
+  let prominenceMin = 0;
   if (autoAdjust) {
-    targetMin = AUTO_TARGET_MIN_MATCHES;
-    targetMax = autoTargetMaxMatches(STORE.duration);
+    const profile = autoProfile(autoAdjustMode, STORE.duration, expertParams);
+    targetMin = profile.targetMin;
+    targetMax = profile.targetMax;
+    prominenceMin = profile.prominenceMin;
+
+    addProminenceToPeaks(rankedAll, validCandidates, minSepFrames);
 
     // Para estimar el umbral no dejamos que la propia plantilla marcada domine el cálculo.
     // La plantilla sí puede aparecer luego como match si supera el umbral final.
     rankedForThreshold = rankedAll.filter(m => !overlapsTemplate(m, iT0, iT1, 0.35));
     if (rankedForThreshold.length === 0) rankedForThreshold = rankedAll;
 
-    const estimate = estimateAutoThreshold(rankedForThreshold.map(m => m.score), {
-      targetMin,
-      targetMax,
-      absoluteFloor: AUTO_ABSOLUTE_FLOOR,
-    });
+    const estimate = estimateAutoThreshold(rankedForThreshold, profile);
     threshold = estimate.threshold;
+    softThreshold = estimate.softThreshold;
     auto = {
       scoreThreshold: threshold,
       strideSec,
-      method: useMulti ? `plantilla compuesta (${sampleEstimatorLabel(estimator)}) + ${comparisonMethodLabel(metric)} + picos/codo robusto` : `${comparisonMethodLabel(metric)} + picos/codo robusto + límites de candidatos`,
+      mode: autoAdjustMode,
+      method: useMulti ? `plantilla compuesta (${sampleEstimatorLabel(estimator)}) + ${comparisonMethodLabel(metric)} + autoajuste ${autoAdjustMode}` : `${comparisonMethodLabel(metric)} + autoajuste ${autoAdjustMode}`,
       candidatesEvaluated: candidates.length,
       rankedCandidates: rankedAll.length,
       rankedForThreshold: rankedForThreshold.length,
       targetMinMatches: targetMin,
       targetMaxMatches: targetMax,
       minSeparationSec: framesToSeconds(minSepFrames),
+      prominenceMin,
+      softThreshold,
       elbowThreshold: estimate.elbow,
       noiseThreshold: estimate.noise,
       relativeThreshold: estimate.relative,
@@ -458,7 +467,10 @@ function searchEmbedding(msg) {
   }
 
   const limit = autoAdjust ? Math.min(maxMatches, targetMax || AUTO_TARGET_MAX_MATCHES) : maxMatches;
-  const kept = rankedAll.filter(m => m.score >= threshold).slice(0, limit);
+  const kept = (autoAdjust
+    ? rankedAll.filter(m => m.score >= threshold || (m.score >= softThreshold && (m.prominence || 0) >= prominenceMin))
+    : rankedAll.filter(m => m.score >= threshold)
+  ).slice(0, limit);
   self.postMessage({ type: 'search-ready', matches: kept, auto });
 }
 function isValidRoiMsg(roi) {
@@ -1140,12 +1152,89 @@ function estimateElbowThreshold(scores) {
   return clamp(top[bestIdx], AUTO_ABSOLUTE_FLOOR, 0.98);
 }
 
-function estimateAutoThreshold(scores, opts = {}) {
+
+function normalizeAutoAdjustMode(value) {
+  const v = String(value || '').toLowerCase();
+  if (v === 'conservador' || v === 'balanceado' || v === 'sensible' || v === 'none') return v;
+  if (v === 'ninguno') return 'none';
+  return 'conservador';
+}
+
+function autoProfile(mode, durationSec, expertParams = {}) {
+  const m = normalizeAutoAdjustMode(mode);
+  let profile;
+  if (m === 'sensible') {
+    profile = {
+      mode: m,
+      targetMin: 8,
+      targetMax: clampInt(Math.round(durationSec / 6), 20, 100),
+      absoluteFloor: 0.30,
+      noiseK: 1.3,
+      relativeFactor: 0.55,
+      prominenceMin: 0.020,
+      softFactor: 0.75,
+    };
+  } else if (m === 'balanceado') {
+    profile = {
+      mode: m,
+      targetMin: 5,
+      targetMax: clampInt(Math.round(durationSec / 8), 12, 60),
+      absoluteFloor: 0.38,
+      noiseK: 1.9,
+      relativeFactor: 0.65,
+      prominenceMin: 0.035,
+      softFactor: 0.85,
+    };
+  } else {
+    profile = {
+      mode: 'conservador',
+      targetMin: AUTO_TARGET_MIN_MATCHES,
+      targetMax: autoTargetMaxMatches(durationSec),
+      absoluteFloor: AUTO_ABSOLUTE_FLOOR,
+      noiseK: 2.5,
+      relativeFactor: 0.75,
+      prominenceMin: 0.055,
+      softFactor: 0.92,
+    };
+  }
+
+  if (expertParams && expertParams.enabled) {
+    if (Number.isFinite(Number(expertParams.minMatches))) profile.targetMin = clampInt(Number(expertParams.minMatches), 1, 20);
+    if (Number.isFinite(Number(expertParams.maxMatches))) profile.targetMax = clampInt(Number(expertParams.maxMatches), 5, 200);
+    if (Number.isFinite(Number(expertParams.prominenceMin))) profile.prominenceMin = clamp(Number(expertParams.prominenceMin), 0, 0.40);
+    if (profile.targetMax < profile.targetMin) profile.targetMax = profile.targetMin;
+  }
+  return profile;
+}
+
+function addProminenceToPeaks(peaks, allCandidates, minSepFrames) {
+  if (!peaks || !peaks.length) return;
+  const allScores = allCandidates.map(m => m.score).filter(Number.isFinite);
+  const globalBaseline = median(allScores);
+  const inner = Math.max(1, Math.round(minSepFrames * 0.65));
+  const outer = Math.max(inner + 1, Math.round(minSepFrames * 3.0));
+  for (const peak of peaks) {
+    const local = [];
+    for (const c of allCandidates) {
+      const d = Math.abs((c.i_t0 || 0) - (peak.i_t0 || 0));
+      if (d >= inner && d <= outer && Number.isFinite(c.score)) local.push(c.score);
+    }
+    const baseline = local.length >= 3 ? median(local) : globalBaseline;
+    peak.localBaseline = baseline;
+    peak.prominence = Math.max(0, peak.score - baseline);
+  }
+}
+
+function estimateAutoThreshold(peaksOrScores, opts = {}) {
   const targetMin = opts.targetMin ?? AUTO_TARGET_MIN_MATCHES;
   const targetMax = opts.targetMax ?? AUTO_TARGET_MAX_MATCHES;
   const absoluteFloor = opts.absoluteFloor ?? AUTO_ABSOLUTE_FLOOR;
+  const noiseK = opts.noiseK ?? 2.5;
+  const relativeFactor = opts.relativeFactor ?? 0.75;
+  const softFactor = opts.softFactor ?? 0.90;
 
-  const clean = scores
+  const clean = peaksOrScores
+    .map(v => typeof v === 'number' ? v : v.score)
     .filter(v => Number.isFinite(v))
     .map(v => clamp01(v))
     .sort((a, b) => b - a);
@@ -1153,6 +1242,7 @@ function estimateAutoThreshold(scores, opts = {}) {
   if (clean.length === 0) {
     return {
       threshold: 0.85,
+      softThreshold: 0.85,
       elbow: 0.85,
       noise: 0.85,
       relative: 0.85,
@@ -1165,22 +1255,16 @@ function estimateAutoThreshold(scores, opts = {}) {
   const med = median(ascending);
   const robustMad = mad(ascending, med);
   const elbow = estimateElbowThreshold(clean);
-  const noise = clamp(med + 2.5 * robustMad, absoluteFloor, 0.98);
-  const relative = clamp(sMax * 0.75, absoluteFloor, 0.98);
+  const noise = clamp(med + noiseK * robustMad, absoluteFloor, 0.98);
+  const relative = clamp(sMax * relativeFactor, absoluteFloor, 0.98);
 
-  // Umbral inicial: razonable, no pegado al máximo.
   let threshold = Math.max(absoluteFloor, elbow, noise, relative);
 
-  // Si el umbral inicial deja demasiados candidatos, subimos hasta el corte de N_MAX.
   if (clean.length >= targetMax) {
     const cutMax = clean[Math.max(0, targetMax - 1)];
-    if (countAtOrAbove(clean, threshold) > targetMax) {
-      threshold = Math.max(threshold, cutMax);
-    }
+    if (countAtOrAbove(clean, threshold) > targetMax) threshold = Math.max(threshold, cutMax);
   }
 
-  // Si el umbral inicial deja menos de N_MIN, bajamos solo hasta donde existan
-  // candidatos razonables por encima del piso absoluto. No se inventan coincidencias.
   if (clean.length >= targetMin) {
     const cutMin = clean[Math.max(0, targetMin - 1)];
     if (countAtOrAbove(clean, threshold) < targetMin && cutMin >= absoluteFloor) {
@@ -1189,16 +1273,17 @@ function estimateAutoThreshold(scores, opts = {}) {
   }
 
   threshold = clamp(threshold, absoluteFloor, 0.98);
+  const softThreshold = clamp(Math.min(threshold, threshold * softFactor), absoluteFloor, threshold);
 
   return {
     threshold,
+    softThreshold,
     elbow,
     noise,
     relative,
     countAtThreshold: countAtOrAbove(clean, threshold),
   };
 }
-
 function countAtOrAbove(sortedDesc, threshold) {
   let n = 0;
   for (const v of sortedDesc) {

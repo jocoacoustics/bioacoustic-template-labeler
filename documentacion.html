@@ -147,6 +147,7 @@
         <a href="#parametros">Parámetros</a>
         <a href="#matematica">Formulación matemática</a>
         <a href="#multiplantilla">Modo multi-plantilla</a>
+        <a href="#actualizaciones">Actualizaciones técnicas</a>
         <a href="#exportacion">Exportación CSV</a>
         <a href="#problemas">Problemas frecuentes</a>
         <a href="#arriba">Volver arriba</a>
@@ -397,8 +398,11 @@ python -m http.server 8000</code></pre>
         <p>Baja el score mínimo, aumenta la banda o prueba una ROI más representativa.</p>
       </section>
 
-      <p class="footer">Proyecto web estático. Puede publicarse en GitHub Pages. El audio se procesa localmente en el navegador del usuario.</p>
-    
+      <section id="actualizaciones">
+        <h2>Actualizaciones técnicas y notas de versión</h2>
+        <p>Esta sección reúne las mejoras agregadas durante las iteraciones recientes. Se conserva como registro técnico para entender la evolución del flujo multi-plantilla, la caché, los métodos de comparación y los cambios de exportación.</p>
+      </section>
+
 <section id="exportacion-audacity">
   <h2>Exportación TXT Audacity</h2>
   <p>La versión v9 permite escribir una <strong>Etiqueta (opcional)</strong> al guardar la ROI. Esa etiqueta se propaga a los resultados y se exporta en CSV, XLSX y TXT.</p>
@@ -452,15 +456,25 @@ python -m http.server 8000</code></pre>
         <p>La penalización evita que desplazamientos grandes produzcan coincidencias demasiado permisivas. El resultado final sigue en la escala 0–1, igual que los demás métodos de comparación, para mantener compatible el autoajuste.</p>
       </section>
 
-    </main>
-  </div>
+    
+<section id="autoajuste-perfiles">
+  <h2>Autoajuste por perfil</h2>
+  <p>La búsqueda usa un selector de autoajuste con cuatro perfiles: <strong>Ninguno</strong>, <strong>Conservador</strong>, <strong>Balanceado</strong> y <strong>Sensible</strong>. Cada plantilla nueva inicia en Balanceado. Al terminar su primera búsqueda, el perfil pasa a Ninguno para permitir ajuste fino manual del score mínimo y de la separación entre ventanas.</p>
+  <p>Conservador mantiene umbrales más estrictos. Balanceado relaja el umbral usando prominencia local de picos e incrementa el máximo de candidatos según la duración del audio. Sensible baja más el piso de aceptación y permite más candidatos cuando los picos sobresalen del fondo local.</p>
+  <p>Para un pico con score $s_i$, se calcula una prominencia local $p_i = s_i - b_i$, donde $b_i$ es un fondo local estimado alrededor del pico. En perfiles Balanceado y Sensible, un candidato puede aceptarse si supera el umbral principal o si supera un umbral suave y tiene suficiente prominencia local. Esto aumenta sensibilidad sin volver directamente a ventanas crudas.</p>
+  <p>El modo experto permite controlar el mínimo objetivo de candidatos, el máximo automático, la prominencia mínima y el agrupamiento temporal. Estos controles solo se muestran cuando se activa <strong>Modo experto</strong>.</p>
+</section>
+
+
+
+  
 
 <section id="v42"><h2>Actualización v42: correlación 2D multi-escala</h2>
   <p>La versión v42 agrega el método <strong>correlación 2D multi-escala</strong>. Este método extiende la correlación cruzada 2D: además de pequeños desplazamientos temporales y frecuenciales, prueba pequeñas variaciones globales de duración y escala frecuencial. No es un warping libre tiempo-frecuencia; es una aproximación controlada, con pocas escalas y penalización por deformación.</p>
   <pre><code>score = max NCC(P, transform(Q, escala_t, escala_f, Δt, Δf)) × penalización</code></pre>
 </section>
 
-<section><h2>Exportación de resultados</h2><p>Los archivos CSV, XLSX y TXT Audacity se descargan usando el mismo nombre base del audio original, cambiando solo la extensión. Si el audio se llama <code>audio.mp3</code>, las exportaciones serán <code>audio.csv</code>, <code>audio.xlsx</code> y <code>audio.txt</code>.</p></section>
+<section id="exportacion-resultados-nota"><h2>Exportación de resultados</h2><p>Los archivos CSV, XLSX y TXT Audacity se descargan usando el mismo nombre base del audio original, cambiando solo la extensión. Si el audio se llama <code>audio.mp3</code>, las exportaciones serán <code>audio.csv</code>, <code>audio.xlsx</code> y <code>audio.txt</code>.</p></section>
 
 <section id="cache-v38">
   <h2>Actualización v38: caché persistente por método</h2>
@@ -468,8 +482,8 @@ python -m http.server 8000</code></pre>
   <p>También se evita que el soporte compuesto mostrado en los campos se agregue accidentalmente como una muestra nueva al ejecutar la búsqueda. Esto mantiene estable la firma de muestras y evita perder la caché. Además, la app precalienta la caché interna del worker de búsqueda cuando se construye una vista previa compuesta.</p>
 </section>
 
-</body>
-</html>
+
+
 
 
 <section id="optimizacion-cache">
@@ -482,3 +496,9 @@ python -m http.server 8000</code></pre>
 <p>La aplicación conserva en memoria cada plantilla compuesta calculada para una combinación fija de muestras, método de plantilla y configuración visual. Si el usuario vuelve a un método ya calculado, la vista previa y la búsqueda reutilizan el resultado en caché. Esto evita reconstruir el consenso al cambiar entre métodos.</p>
 <p>El caché se invalida únicamente cuando cambian las muestras, el audio o la configuración del espectrograma. En particular, cambiar de <em>consenso NCC</em> a <em>medoide</em> y volver a <em>consenso NCC</em> no debería recalcular si las muestras no cambiaron.</p>
 <p>El medoide usa una ruta rápida basada en embeddings 48×48 para escoger una muestra real representativa. Los métodos de consenso siguen usando alineación, pero su resultado queda guardado.</p>
+
+      <p class="footer">Proyecto web estático. Puede publicarse en GitHub Pages. El audio se procesa localmente en el navegador del usuario.</p>
+    </main>
+  </div>
+</body>
+</html>

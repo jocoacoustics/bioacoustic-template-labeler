@@ -673,3 +673,24 @@ tr.match-row:hover { background: #eff6ff; }
   overflow: hidden;
   text-overflow: ellipsis;
 }
+
+.expert-panel {
+  border: 1px solid rgba(148, 163, 184, 0.35);
+  border-radius: 14px;
+  background: rgba(248, 250, 252, 0.78);
+  padding: 10px;
+  margin: 8px 0 10px;
+}
+
+.expert-panel.is-hidden {
+  display: none;
+}
+
+.compact-control {
+  margin-bottom: 8px;
+}
+
+input.is-auto-locked {
+  opacity: 0.55;
+  cursor: not-allowed;
+}

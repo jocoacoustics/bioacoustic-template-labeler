@@ -7,7 +7,7 @@ Aplicación web pura para marcar una plantilla acústica en un espectrograma y b
 Descomprime el ZIP y sirve la carpeta con un servidor local. Por ejemplo, con Python/Conda:
 
 ```bash
-cd bioacoustic-template-labeler-wizard-v42
+cd bioacoustic-template-labeler-wizard
 python -m http.server 8000
 ```
 
@@ -198,3 +198,17 @@ score = max NCC(P, transform(Q, escala_t, escala_f, Δt, Δf)) × penalización
 ```
 
 La escala del score se mantiene entre 0 y 1, por lo que sigue siendo compatible con el autoajuste de picos/islas y con el mismo control de score mínimo.
+
+
+## Autoajuste por perfil
+
+La versión v43 reemplaza el antiguo casillero de autoajuste por un selector con cuatro perfiles:
+
+- **Ninguno:** usa exactamente el score mínimo y la separación entre ventanas definidos manualmente.
+- **Conservador:** prioriza pocas coincidencias de alta confianza; corresponde al comportamiento más estricto usado en versiones previas.
+- **Balanceado:** perfil recomendado por defecto para la primera búsqueda de cada plantilla; usa picos/islas, prominencia local y límites adaptativos para aumentar sensibilidad sin volver a cientos de cajas.
+- **Sensible:** acepta más candidatos cuando hay picos prominentes, útil para exploración.
+
+Cada plantilla nueva arranca con **Balanceado**. Después de su primera búsqueda, el perfil pasa automáticamente a **Ninguno** para que el usuario pueda ajustar manualmente el score mínimo y la separación entre ventanas. Cuando el perfil no es Ninguno, los controles manuales se muestran como referencia, pero quedan bloqueados porque serán calculados al buscar.
+
+El modo experto permite ajustar límites internos como mínimo objetivo de candidatos, máximo automático, prominencia mínima y agrupamiento temporal. Estos parámetros se guardan por plantilla y se envían al worker solo cuando el modo experto está activado.

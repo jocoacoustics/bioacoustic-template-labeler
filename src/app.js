@@ -112,7 +112,17 @@ const el = {
   scoreThresholdInput: document.getElementById('scoreThresholdInput'),
   strideSec: document.getElementById('strideSec'),
   strideSecInput: document.getElementById('strideSecInput'),
-  autoAdjustParams: document.getElementById('autoAdjustParams'),
+  autoAdjustMode: document.getElementById('autoAdjustMode'),
+  expertMode: document.getElementById('expertMode'),
+  expertPanel: document.getElementById('expertPanel'),
+  expertMinMatches: document.getElementById('expertMinMatches'),
+  expertMinMatchesInput: document.getElementById('expertMinMatchesInput'),
+  expertMaxMatches: document.getElementById('expertMaxMatches'),
+  expertMaxMatchesInput: document.getElementById('expertMaxMatchesInput'),
+  expertProminence: document.getElementById('expertProminence'),
+  expertProminenceInput: document.getElementById('expertProminenceInput'),
+  expertGroupFactor: document.getElementById('expertGroupFactor'),
+  expertGroupFactorInput: document.getElementById('expertGroupFactorInput'),
   showActiveMatches: document.getElementById('showActiveMatches'),
   useMultiSamples: document.getElementById('useMultiSamples'),
   sampleEstimator: document.getElementById('sampleEstimator'),
@@ -304,7 +314,7 @@ function resetForNewAudio() {
   if (el.roiLabel) el.roiLabel.value = '';
   el.roiSummary.textContent = 'Sin plantilla.';
   el.matchSummary.textContent = 'Sin coincidencias.';
-  if (el.autoAdjustParams) el.autoAdjustParams.checked = true;
+  setAutoAdjustControls('balanceado');
   if (el.showActiveMatches) el.showActiveMatches.checked = true;
   if (el.useMultiSamples) el.useMultiSamples.checked = false;
   if (el.sampleEstimator) el.sampleEstimator.value = 'consensus_ncc';
@@ -869,6 +879,7 @@ function ensureActiveTemplateForSamples() {
   }
   tpl.useMultiSamples = Boolean(el.useMultiSamples?.checked);
   tpl.sampleEstimator = el.sampleEstimator?.value || tpl.sampleEstimator || 'consensus_ncc';
+  tpl.expertParams = expertParamsFromUi();
   if (!Array.isArray(tpl.samples)) tpl.samples = [];
   return tpl;
 }
@@ -894,6 +905,7 @@ function addCurrentSampleToActiveTemplate({ silent = false } = {}) {
   tpl.matches = [];
   tpl.hasSearched = false;
   tpl.autoAdjust = true;
+  tpl.autoAdjustMode = 'balanceado';
   tpl.showMatches = true;
   tpl.isDraft = false;
   state.activeTemplateId = tpl.id;
@@ -921,6 +933,7 @@ function removeLastSampleFromActiveTemplate() {
   tpl.matches = [];
   tpl.hasSearched = false;
   tpl.autoAdjust = true;
+  tpl.autoAdjustMode = 'balanceado';
   updateSamplePanelState(tpl);
   renderTemplateNavigator();
   refreshCombinedMatches();
@@ -991,7 +1004,9 @@ function createDraftTemplate() {
     scoreThreshold: Number(el.scoreThreshold?.value || 0.85),
     strideSec: Number(el.strideSec?.value || 0.10),
     autoAdjust: true,
+    autoAdjustMode: 'balanceado',
     showMatches: true,
+    expertParams: expertParamsFromUi(),
     useMultiSamples: Boolean(el.useMultiSamples?.checked),
     sampleEstimator: el.sampleEstimator?.value || 'consensus_ncc',
     samples: [],
@@ -1021,10 +1036,12 @@ function syncActiveTemplateParamsFromUi() {
   tpl.metric = el.metricSelect.value;
   tpl.scoreThreshold = Number(el.scoreThreshold.value);
   tpl.strideSec = Number(el.strideSec.value);
-  tpl.autoAdjust = Boolean(el.autoAdjustParams?.checked);
+  tpl.autoAdjustMode = normalizeAutoAdjustMode(el.autoAdjustMode?.value || getTemplateAutoMode(tpl));
+  tpl.autoAdjust = isAutoModeActive(tpl.autoAdjustMode);
   tpl.showMatches = Boolean(el.showActiveMatches?.checked);
   tpl.useMultiSamples = Boolean(el.useMultiSamples?.checked);
   tpl.sampleEstimator = el.sampleEstimator?.value || tpl.sampleEstimator || 'consensus_ncc';
+  tpl.expertParams = expertParamsFromUi();
   if (!Array.isArray(tpl.samples)) tpl.samples = [];
   updateSamplePanelState(tpl);
 
@@ -1047,6 +1064,7 @@ function applyTemplateToFields(tpl) {
     el.roiFmax.value = 0;
     if (el.roiLabel) el.roiLabel.value = '';
     if (el.showActiveMatches) el.showActiveMatches.checked = true;
+    setExpertControls({ enabled: false });
     if (el.useMultiSamples) el.useMultiSamples.checked = false;
     if (el.sampleEstimator) el.sampleEstimator.value = 'consensus_ncc';
     updateSamplePanelState(null);
@@ -1064,7 +1082,8 @@ function applyTemplateToFields(tpl) {
   el.metricSelect.value = tpl.metric || 'coseno';
   setScoreControls(tpl.scoreThreshold ?? 0.85);
   setStrideControls(tpl.strideSec ?? 0.10);
-  if (el.autoAdjustParams) el.autoAdjustParams.checked = tpl.autoAdjust ?? !tpl.hasSearched;
+  setAutoAdjustControls(getTemplateAutoMode(tpl));
+  setExpertControls(tpl.expertParams || {});
   if (el.showActiveMatches) el.showActiveMatches.checked = tpl.showMatches !== false;
   if (el.useMultiSamples) el.useMultiSamples.checked = Boolean(tpl.useMultiSamples);
   if (el.sampleEstimator) el.sampleEstimator.value = tpl.sampleEstimator || 'consensus_ncc';
@@ -1169,7 +1188,7 @@ function clearFieldsForNewTemplate() {
   if (el.useMultiSamples) el.useMultiSamples.checked = false;
   if (el.sampleEstimator) el.sampleEstimator.value = 'consensus_ncc';
   updateSamplePanelState(null);
-  if (el.autoAdjustParams) el.autoAdjustParams.checked = true;
+  setAutoAdjustControls('balanceado');
   if (el.showActiveMatches) el.showActiveMatches.checked = true;
   el.roiSummary.textContent = 'Dibuja una caja para crear la primera plantilla.';
   if (el.btnSaveRoi) el.btnSaveRoi.disabled = true;
@@ -1357,6 +1376,7 @@ function onWorkerMessage(ev) {
         strideSec: tpl.strideSec,
       };
       tpl.autoAdjust = false;
+      tpl.autoAdjustMode = 'none';
     } else if (tpl) {
       tpl.lastAuto = null;
     }
@@ -1376,7 +1396,7 @@ function onWorkerMessage(ev) {
     hideProcessing();
     if (state.currentSearchAll || !state.hasSearched) {
       state.hasSearched = true;
-      if (el.autoAdjustParams) el.autoAdjustParams.checked = false;
+      setAutoAdjustControls('none');
     }
     state.currentSearchTemplateId = null;
     state.currentSearchAll = false;
@@ -1954,11 +1974,12 @@ function setRoi(roi, fromFields = false) {
     activeTpl.matches = [];
     activeTpl.hasSearched = false;
     activeTpl.autoAdjust = true;
+    activeTpl.autoAdjustMode = 'balanceado';
     activeTpl.showMatches = true;
     activeTpl.isDraft = true;
   }
   if (validNow && roiChangedForActive) {
-    if (el.autoAdjustParams) el.autoAdjustParams.checked = true;
+    setAutoAdjustControls('balanceado');
     if (activeTpl) activeTpl.autoAdjust = true;
   }
   if (el.btnAddTemplate) el.btnAddTemplate.disabled = !validNow;
@@ -2361,7 +2382,9 @@ function saveCurrentTemplate({ silent = false } = {}) {
       scoreThreshold: Number(el.scoreThreshold.value || 0.85),
       strideSec: Number(el.strideSec.value || 0.10),
       autoAdjust: true,
+      autoAdjustMode: 'balanceado',
       showMatches: true,
+      expertParams: expertParamsFromUi(),
       useMultiSamples: Boolean(el.useMultiSamples?.checked),
       sampleEstimator: el.sampleEstimator?.value || 'consensus_ncc',
       samples: [],
@@ -2375,6 +2398,7 @@ function saveCurrentTemplate({ silent = false } = {}) {
 
   tpl.useMultiSamples = Boolean(el.useMultiSamples?.checked);
   tpl.sampleEstimator = el.sampleEstimator?.value || tpl.sampleEstimator || 'consensus_ncc';
+  tpl.expertParams = expertParamsFromUi();
   if (!Array.isArray(tpl.samples)) tpl.samples = [];
 
   if (tpl.useMultiSamples && isRoiValid(state.roi)) {
@@ -2403,6 +2427,7 @@ function saveCurrentTemplate({ silent = false } = {}) {
     tpl.matches = [];
     tpl.hasSearched = false;
     tpl.autoAdjust = true;
+  tpl.autoAdjustMode = 'balanceado';
     tpl.showMatches = true;
   }
   tpl.etiqueta = cleanLabel(currentEtiqueta() || tpl.etiqueta || tpl.defaultLabel);
@@ -2414,7 +2439,8 @@ function saveCurrentTemplate({ silent = false } = {}) {
   tpl.scoreThreshold = Number(el.scoreThreshold.value || tpl.scoreThreshold || 0.85);
   tpl.strideSec = Number(el.strideSec.value || tpl.strideSec || 0.10);
   if (!(isNew || roiChanged || wasDraft)) {
-    tpl.autoAdjust = Boolean(el.autoAdjustParams?.checked ?? tpl.autoAdjust);
+    tpl.autoAdjustMode = normalizeAutoAdjustMode(el.autoAdjustMode?.value || getTemplateAutoMode(tpl));
+    tpl.autoAdjust = isAutoModeActive(tpl.autoAdjustMode);
   }
   tpl.showMatches = Boolean(el.showActiveMatches?.checked ?? tpl.showMatches);
   tpl.isDraft = false;
@@ -2550,7 +2576,7 @@ function searchEmbedding(options = {}) {
   state.currentSearchAll = isBatchSearch;
   state.forceAutoSearch = forceAuto;
   if (forceAuto) {
-    templatesToSearch.forEach(t => { t.autoAdjust = true; });
+    templatesToSearch.forEach(t => { t.autoAdjust = true; t.autoAdjustMode = 'balanceado'; });
   }
   state.searchQueue = templatesToSearch.map(t => t.id);
   state.searchResultsAccumulator = [];
@@ -2578,7 +2604,8 @@ function startNextSearchInQueue() {
     fmax: tpl.fmax,
     etiqueta: displayLabelForTemplate(tpl),
   };
-  const useAuto = Boolean(state.forceAutoSearch) || Boolean(tpl.autoAdjust);
+  const autoMode = state.forceAutoSearch ? 'balanceado' : getTemplateAutoMode(tpl);
+  const useAuto = isAutoModeActive(autoMode);
   postSearchStatus(`Buscando ${displayLabelForTemplate(tpl)}...`);
   state.worker.postMessage({
     type: 'search-embedding',
@@ -2590,6 +2617,8 @@ function startNextSearchInQueue() {
     scoreThreshold: Number(tpl.scoreThreshold ?? el.scoreThreshold.value ?? 0.85),
     strideSec: Number(tpl.strideSec ?? el.strideSec.value ?? 0.10),
     autoAdjust: useAuto,
+    autoAdjustMode: autoMode,
+    expertParams: tpl.expertParams || expertParamsFromUi(),
     maxMatches: CONFIG.maxMatchesToStore,
   });
 }
@@ -2608,6 +2637,70 @@ function clearMatches() {
   updateSearchSummaryText();
   drawOverlay();
   showToast('Coincidencias limpiadas', `Se retiraron las cajas de ${displayLabelForTemplate(tpl)}.`);
+}
+
+
+function normalizeAutoAdjustMode(value) {
+  const v = String(value || '').toLowerCase();
+  if (v === 'conservador' || v === 'balanceado' || v === 'sensible' || v === 'none') return v;
+  if (v === 'ninguno') return 'none';
+  return 'balanceado';
+}
+
+function isAutoModeActive(mode) {
+  return normalizeAutoAdjustMode(mode) !== 'none';
+}
+
+function getTemplateAutoMode(tpl) {
+  if (!tpl) return 'none';
+  if (tpl.autoAdjustMode) return normalizeAutoAdjustMode(tpl.autoAdjustMode);
+  return tpl.autoAdjust ? 'balanceado' : 'none';
+}
+
+function setAutoAdjustControls(mode) {
+  const normalized = normalizeAutoAdjustMode(mode);
+  if (el.autoAdjustMode) el.autoAdjustMode.value = normalized;
+  updateManualSearchControlState();
+}
+
+function updateManualSearchControlState() {
+  const autoMode = normalizeAutoAdjustMode(el.autoAdjustMode?.value || 'none');
+  const manual = autoMode === 'none';
+  [el.scoreThreshold, el.scoreThresholdInput, el.strideSec, el.strideSecInput].forEach(node => {
+    if (!node) return;
+    node.disabled = !manual;
+    node.classList.toggle('is-auto-locked', !manual);
+  });
+  if (el.expertPanel) el.expertPanel.classList.toggle('is-hidden', !el.expertMode?.checked);
+}
+
+
+function setExpertControls(params = {}) {
+  const enabled = Boolean(params.enabled);
+  if (el.expertMode) el.expertMode.checked = enabled;
+  const pairs = [
+    [el.expertMinMatches, el.expertMinMatchesInput, params.minMatches ?? 3, 0],
+    [el.expertMaxMatches, el.expertMaxMatchesInput, params.maxMatches ?? 30, 0],
+    [el.expertProminence, el.expertProminenceInput, params.prominenceMin ?? 0.035, 3],
+    [el.expertGroupFactor, el.expertGroupFactorInput, params.groupFactor ?? 1.0, 2],
+  ];
+  for (const [range, input, value, decimals] of pairs) {
+    if (!range || !input) continue;
+    const formatted = Number(value).toFixed(decimals);
+    range.value = formatted;
+    input.value = formatted;
+  }
+  updateManualSearchControlState();
+}
+
+function expertParamsFromUi() {
+  return {
+    enabled: Boolean(el.expertMode?.checked),
+    minMatches: Number(el.expertMinMatches?.value || 3),
+    maxMatches: Number(el.expertMaxMatches?.value || 30),
+    prominenceMin: Number(el.expertProminence?.value || 0.035),
+    groupFactor: Number(el.expertGroupFactor?.value || 1.0),
+  };
 }
 
 function setScoreControls(value) {
@@ -2755,7 +2848,8 @@ function attachEvents() {
     });
   }
   if (el.showActiveMatches) el.showActiveMatches.addEventListener('change', () => { syncActiveTemplateParamsFromUi(); drawOverlay(); });
-  if (el.autoAdjustParams) el.autoAdjustParams.addEventListener('change', syncActiveTemplateParamsFromUi);
+  if (el.autoAdjustMode) el.autoAdjustMode.addEventListener('change', () => { syncActiveTemplateParamsFromUi(); updateManualSearchControlState(); });
+  if (el.expertMode) el.expertMode.addEventListener('change', () => { syncActiveTemplateParamsFromUi(); updateManualSearchControlState(); });
   if (el.useMultiSamples) el.useMultiSamples.addEventListener('change', () => {
     const tpl = getActiveTemplate();
     if (tpl) {
@@ -2766,6 +2860,7 @@ function attachEvents() {
       tpl.matches = [];
       tpl.hasSearched = false;
       tpl.autoAdjust = true;
+  tpl.autoAdjustMode = 'balanceado';
     }
     updateSamplePanelState(tpl);
     renderTemplateNavigator();
@@ -2789,6 +2884,7 @@ function attachEvents() {
         tpl.matches = [];
         tpl.hasSearched = false;
         tpl.autoAdjust = true;
+  tpl.autoAdjustMode = 'balanceado';
       }
     }
     updateSamplePanelState(tpl);
@@ -2825,6 +2921,14 @@ function attachEvents() {
   if (el.colormapSelect) el.colormapSelect.addEventListener('change', applySpectrogramSettings);
   syncRangeNumber(el.scoreThreshold, el.scoreThresholdInput, 3, 0, 0.99);
   syncRangeNumber(el.strideSec, el.strideSecInput, 2, 0.01, 1.00);
+  if (el.expertMinMatches && el.expertMinMatchesInput) syncRangeNumber(el.expertMinMatches, el.expertMinMatchesInput, 0, 1, 20);
+  if (el.expertMaxMatches && el.expertMaxMatchesInput) syncRangeNumber(el.expertMaxMatches, el.expertMaxMatchesInput, 0, 5, 200);
+  if (el.expertProminence && el.expertProminenceInput) syncRangeNumber(el.expertProminence, el.expertProminenceInput, 3, 0, 0.40);
+  if (el.expertGroupFactor && el.expertGroupFactorInput) syncRangeNumber(el.expertGroupFactor, el.expertGroupFactorInput, 2, 0.40, 2.00);
+  [el.expertMinMatches, el.expertMinMatchesInput, el.expertMaxMatches, el.expertMaxMatchesInput, el.expertProminence, el.expertProminenceInput, el.expertGroupFactor, el.expertGroupFactorInput].forEach(node => {
+    if (node) node.addEventListener('change', syncActiveTemplateParamsFromUi);
+  });
+  updateManualSearchControlState();
 }
 
 attachEvents();

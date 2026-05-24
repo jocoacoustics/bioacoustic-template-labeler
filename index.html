@@ -181,16 +181,50 @@
                 <input id="strideSecInput" class="number-compact" type="number" min="0.01" max="1.00" step="0.01" value="0.10" />
               </div>
             </label>
+            <label class="control-label"><span class="label-row">Autoajuste <button type="button" class="info-dot" data-tip="Ninguno usa tus valores manuales. Conservador prioriza pocas coincidencias de alta confianza. Balanceado es el recomendado para la primera búsqueda. Sensible acepta más candidatos si hay picos prominentes.">i</button></span>
+              <select id="autoAdjustMode">
+                <option value="none">Ninguno</option>
+                <option value="conservador">Conservador</option>
+                <option value="balanceado" selected>Balanceado</option>
+                <option value="sensible">Sensible</option>
+              </select>
+            </label>
             <div class="check-grid-row">
               <label class="checkline auto-adjust-row compact-check">
-                <input id="autoAdjustParams" type="checkbox" checked />
-                Autoajustar
-                <button type="button" class="info-dot" data-tip="En la primera búsqueda propone automáticamente score y separación para cada plantilla. Después se desmarca para permitir ajustes manuales.">i</button>
+                <input id="expertMode" type="checkbox" />
+                Modo experto
+                <button type="button" class="info-dot" data-tip="Muestra parámetros técnicos del autoajuste. Déjalo apagado para uso normal.">i</button>
               </label>
               <label class="checkline auto-adjust-row compact-check">
                 <input id="showActiveMatches" type="checkbox" checked />
                 Ver cajas
                 <button type="button" class="info-dot" data-tip="Muestra u oculta en el espectrograma las cajas inferidas de la plantilla activa. No borra resultados ni afecta exportaciones.">i</button>
+              </label>
+            </div>
+            <div id="expertPanel" class="expert-panel is-hidden">
+              <label class="control-label compact-control"><span class="label-row">Mínimo objetivo</span>
+                <div class="slider-number-row">
+                  <input id="expertMinMatches" type="range" min="1" max="20" step="1" value="3" />
+                  <input id="expertMinMatchesInput" class="number-compact" type="number" min="1" max="20" step="1" value="3" />
+                </div>
+              </label>
+              <label class="control-label compact-control"><span class="label-row">Máximo automático</span>
+                <div class="slider-number-row">
+                  <input id="expertMaxMatches" type="range" min="5" max="200" step="1" value="30" />
+                  <input id="expertMaxMatchesInput" class="number-compact" type="number" min="5" max="200" step="1" value="30" />
+                </div>
+              </label>
+              <label class="control-label compact-control"><span class="label-row">Prominencia mínima</span>
+                <div class="slider-number-row">
+                  <input id="expertProminence" type="range" min="0" max="0.40" step="0.005" value="0.035" />
+                  <input id="expertProminenceInput" class="number-compact" type="number" min="0" max="0.40" step="0.005" value="0.035" />
+                </div>
+              </label>
+              <label class="control-label compact-control"><span class="label-row">Agrupamiento temporal</span>
+                <div class="slider-number-row">
+                  <input id="expertGroupFactor" type="range" min="0.40" max="2.00" step="0.05" value="1.00" />
+                  <input id="expertGroupFactorInput" class="number-compact" type="number" min="0.40" max="2.00" step="0.05" value="1.00" />
+                </div>
               </label>
             </div>
             <div class="button-row">
