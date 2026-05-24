@@ -217,17 +217,6 @@ function openRoiStep() {
   setPanelOpen('results', false);
 }
 
-function focusTemplateStep() {
-  // Usado cuando el usuario dibuja una plantilla nueva desde el espectrograma.
-  // Dejamos Plantilla arriba y lista para editar etiqueta/coordenadas.
-  setPanelOpen('guide', false);
-  setPanelOpen('spectrogram-config', false);
-  setPanelOpen('roi', true);
-  setPanelOpen('search', false);
-  setPanelOpen('results', false);
-  scrollSidePanelTo('roi');
-}
-
 function openSearchStep() {
   setPanelOpen('guide', false);
   setPanelOpen('spectrogram-config', false);
@@ -347,10 +336,8 @@ function getPendingTemplates() {
 }
 
 function shouldBlockCanvasRoiEdit() {
-  // Ya no bloqueamos el dibujo sobre el espectrograma después de una búsqueda.
-  // Si la plantilla activa ya fue buscada y el usuario dibuja otra caja,
-  // esa caja se convierte en una nueva plantilla, no reemplaza la anterior.
-  return false;
+  const active = getActiveTemplate();
+  return Boolean(active && active.hasSearched && isTemplateValid(active));
 }
 
 function hasPendingTemplateOrCurrentRoi() {
@@ -1288,16 +1275,6 @@ function setRoi(roi, fromFields = false) {
   if (el.btnClearRoi) el.btnClearRoi.disabled = false;
   const validNow = isRoiValid(clipped);
   let activeTpl = getActiveTemplate();
-  let createdNewFromSearched = false;
-
-  // Si la plantilla activa ya fue buscada y el usuario dibuja una nueva caja,
-  // interpretamos la acción como creación de una plantilla nueva.
-  // Esto evita reemplazar accidentalmente una plantilla ya procesada.
-  if (validNow && activeTpl && activeTpl.hasSearched && isTemplateValid(activeTpl) && !sameRoi(clipped, activeTpl)) {
-    activeTpl = createDraftTemplate();
-    createdNewFromSearched = true;
-    if (el.roiLabel) el.roiLabel.value = activeTpl.defaultLabel;
-  }
 
   // Si todavía no existe una plantilla activa, crearla recién cuando haya una caja real.
   // Así evitamos fonotipo1 en el origen, pero el chip aparece apenas se dibuja una plantilla válida.
@@ -1306,12 +1283,12 @@ function setRoi(roi, fromFields = false) {
     const label = cleanLabel(el.roiLabel?.value || activeTpl.defaultLabel || nextFonotipoName());
     activeTpl.etiqueta = label;
     if (el.roiLabel) el.roiLabel.value = label;
-  } else if (validNow && activeTpl && el.roiLabel && !cleanLabel(el.roiLabel.value)) {
+  } else if (validNow && el.roiLabel && !cleanLabel(el.roiLabel.value)) {
     el.roiLabel.value = displayLabelForTemplate(activeTpl) || nextFonotipoName();
   }
 
   const roiChangedForActive = activeTpl ? !sameRoi(clipped, activeTpl) : true;
-  if (validNow && activeTpl && (!activeTpl.hasSearched || createdNewFromSearched) && roiChangedForActive) {
+  if (validNow && activeTpl && !activeTpl.hasSearched && roiChangedForActive) {
     activeTpl.tmin = clipped.tmin;
     activeTpl.tmax = clipped.tmax;
     activeTpl.fmin = clipped.fmin;
@@ -1332,14 +1309,8 @@ function setRoi(roi, fromFields = false) {
   updateSearchSummaryText();
   el.roiSummary.textContent = `Plantilla actual: t=[${fmt(clipped.tmin)}, ${fmt(clipped.tmax)}] s · f=[${fmt(clipped.fmin, 1)}, ${fmt(clipped.fmax, 1)}] Hz`;
   if (!fromFields) {
-    if (createdNewFromSearched) {
-      setCoach('Nueva plantilla marcada', 'Se creó una nueva plantilla sin reemplazar las anteriores. Puedes buscarla o agregar otra.');
-      setStatus('Nueva plantilla', 'Plantilla nueva lista para buscar o agregar.');
-      focusTemplateStep();
-    } else {
-      setCoach('Plantilla marcada', 'Puedes pulsar Buscar coincidencias directamente, o Agregar plantilla + para guardar esta y marcar otra.');
-      setStatus('Plantilla marcada', 'Busca coincidencias o agrega otra plantilla.');
-    }
+    setCoach('Plantilla marcada', 'Puedes pulsar Buscar coincidencias directamente, o Agregar plantilla + para guardar esta y marcar otra.');
+    setStatus('Plantilla marcada', 'Busca coincidencias o agrega otra plantilla.');
   }
   drawOverlay();
 }

@@ -533,3 +533,37 @@ tr.match-row:hover { background: #eff6ff; }
   outline: 2px solid var(--primary);
   background: #ffffff;
 }
+
+
+/* v23: estados discretos en chips y acciones más claras */
+.template-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.chip-status {
+  display: inline-grid;
+  place-items: center;
+  width: 16px;
+  height: 16px;
+  border-radius: 999px;
+  font-size: 10px;
+  font-weight: 900;
+  color: #0f172a;
+  background: color-mix(in srgb, var(--tpl-color) 35%, #ffffff 65%);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--tpl-color) 65%, #ffffff 35%);
+}
+.template-chip.active .chip-status {
+  background: var(--tpl-color);
+  color: #08111f;
+}
+.chip-label {
+  max-width: 120px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.search-all-btn:disabled {
+  background: #e5e7eb;
+  color: #64748b;
+  border-color: #e5e7eb;
+}
