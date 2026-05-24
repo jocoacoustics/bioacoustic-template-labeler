@@ -7,7 +7,7 @@ Aplicación web pura para marcar una plantilla acústica en un espectrograma y b
 Descomprime el ZIP y sirve la carpeta con un servidor local. Por ejemplo, con Python/Conda:
 
 ```bash
-cd bioacoustic-template-labeler-wizard-v8
+cd bioacoustic-template-labeler-wizard-v28
 python -m http.server 8000
 ```
 
