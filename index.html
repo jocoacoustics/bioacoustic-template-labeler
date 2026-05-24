@@ -107,6 +107,32 @@
               <label class="full-row">Etiqueta (opcional)
                 <input id="roiLabel" class="roi-label-input" type="text" placeholder="Ej. especie, código o clase" />
               </label>
+              <label class="checkline compound-check full-row">
+                <input id="useMultiSamples" type="checkbox" />
+                <span>Usar varias muestras</span>
+                <button type="button" class="info-dot" data-tip="Permite marcar varias muestras del mismo fonotipo. La app estima un soporte robusto con Q10/Q90, alinea las muestras por máxima similitud sobre zonas salientes y permite construir una plantilla por medoide, mediana alineada, promedio alineado, consenso NCC o consenso ponderado.">i</button>
+              </label>
+              <div id="samplePanel" class="sample-panel full-row is-hidden">
+                <canvas id="samplePreviewCanvas" class="sample-preview" width="360" height="120" aria-label="Vista de la plantilla compuesta"></canvas>
+                <label class="compact-estimator">Método de plantilla
+                  <select id="sampleEstimator">
+                    <option value="consensus_ncc" selected>consenso NCC</option>
+                    <option value="weighted_consensus">consenso ponderado</option>
+                    <option value="medoid">medoide</option>
+                    <option value="median">mediana alineada</option>
+                    <option value="mean">promedio alineado</option>
+                  </select>
+                </label>
+                <div class="button-row sample-actions">
+                  <button id="btnRemoveSample" class="btn btn-ghost btn-small" disabled>Quitar última muestra</button>
+                  <button id="btnAddSample" class="btn btn-primary btn-small" disabled>Agregar muestra</button>
+                </div>
+                <div id="sampleProgress" class="sample-progress is-hidden">
+                  <div class="sample-progress-track"><div class="sample-progress-bar"></div></div>
+                  <div class="sample-progress-text">Plantilla compuesta lista.</div>
+                </div>
+                <div id="sampleSummary" class="mini-summary">Marca una caja y pulsa Agregar muestra.</div>
+              </div>
               <label>tmin <input id="roiTmin" type="number" step="0.001" value="0" /></label>
               <label>tmax <input id="roiTmax" type="number" step="0.001" value="0" /></label>
               <label>fmin <input id="roiFmin" type="number" step="1" value="0" /></label>
@@ -133,11 +159,14 @@
           </button>
           <div class="accordion-content">
             <div id="searchTemplateChips" class="template-chips search-template-chips" aria-label="Plantillas para búsqueda"></div>
-            <label class="control-label"><span class="label-row">Métrica <button type="button" class="info-dot" data-tip="Define cómo se compara la plantilla con cada ventana candidata. Coseno/correlación comparan forma; euclidiana normalizada compara distancia convertida a similitud.">i</button></span>
+            <label class="control-label"><span class="label-row">Método de comparación <button type="button" class="info-dot" data-tip="Define cómo se compara la plantilla con cada ventana candidata. Coseno/correlación/euclidiana usan el embedding 48×48; correlación cruzada permite tolerancia temporal, correlación cruzada 2D permite tolerancia temporal y frecuencial, y correlación 2D multi-escala prueba pequeñas variaciones globales de duración y frecuencia. Estos métodos pueden tardar más.">i</button></span>
               <select id="metricSelect">
                 <option value="coseno" selected>coseno</option>
                 <option value="correlacion">correlación normalizada</option>
                 <option value="euclidiana">euclidiana normalizada</option>
+                <option value="correlacion_cruzada">correlación cruzada</option>
+                <option value="correlacion_cruzada_2d">correlación cruzada 2D</option>
+                <option value="correlacion_2d_multiescala">correlación 2D multi-escala</option>
               </select>
             </label>
             <label class="control-label"><span class="label-row">Score mínimo <button type="button" class="info-dot" data-tip="Umbral de similitud entre 0 y 1. Más alto = menos coincidencias, más estrictas. Más bajo = más coincidencias, pero puede incluir ruido.">i</button></span>

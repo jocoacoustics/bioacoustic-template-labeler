@@ -44,6 +44,8 @@ const state = {
   moved: false,
   preventRoiEdit: false,
   lockToastShown: false,
+  samplePreviewToken: 0,
+  workerCompoundWarmKeys: new Set(),
   startX: 0,
   startY: 0,
   rafId: null,
@@ -112,6 +114,14 @@ const el = {
   strideSecInput: document.getElementById('strideSecInput'),
   autoAdjustParams: document.getElementById('autoAdjustParams'),
   showActiveMatches: document.getElementById('showActiveMatches'),
+  useMultiSamples: document.getElementById('useMultiSamples'),
+  sampleEstimator: document.getElementById('sampleEstimator'),
+  samplePanel: document.getElementById('samplePanel'),
+  samplePreviewCanvas: document.getElementById('samplePreviewCanvas'),
+  sampleSummary: document.getElementById('sampleSummary'),
+  sampleProgress: document.getElementById('sampleProgress'),
+  btnAddSample: document.getElementById('btnAddSample'),
+  btnRemoveSample: document.getElementById('btnRemoveSample'),
   infoDots: Array.from(document.querySelectorAll('.info-dot')),
   btnSearch: document.getElementById('btnSearch'),
   btnClearMatches: document.getElementById('btnClearMatches'),
@@ -279,6 +289,7 @@ function resetForNewAudio() {
   state.currentSearchTemplateId = null;
   state.currentSearchAll = false;
   state.forceAutoSearch = false;
+  state.workerCompoundWarmKeys = new Set();
   state.matches = [];
   state.spectrogramReady = false;
   state.display = null;
@@ -295,6 +306,9 @@ function resetForNewAudio() {
   el.matchSummary.textContent = 'Sin coincidencias.';
   if (el.autoAdjustParams) el.autoAdjustParams.checked = true;
   if (el.showActiveMatches) el.showActiveMatches.checked = true;
+  if (el.useMultiSamples) el.useMultiSamples.checked = false;
+  if (el.sampleEstimator) el.sampleEstimator.value = 'consensus_ncc';
+  updateSamplePanelState(null);
   el.spectrogramTitle.textContent = state.file ? `Espectrograma · ${state.file.name}` : 'Sin espectrograma';
   if (el.btnApplyRoi) el.btnApplyRoi.disabled = true;
   if (el.btnSaveRoi) el.btnSaveRoi.disabled = true;
@@ -331,11 +345,588 @@ function colorForTemplateIndex(idx) {
 }
 
 function isTemplateValid(tpl) {
-  return Boolean(tpl && Number.isFinite(tpl.tmin) && Number.isFinite(tpl.tmax) && Number.isFinite(tpl.fmin) && Number.isFinite(tpl.fmax) && tpl.tmax > tpl.tmin && tpl.fmax > tpl.fmin);
+  if (!tpl) return false;
+  if (tpl.useMultiSamples) {
+    return Array.isArray(tpl.samples) && tpl.samples.some(isRoiValid);
+  }
+  return Boolean(Number.isFinite(tpl.tmin) && Number.isFinite(tpl.tmax) && Number.isFinite(tpl.fmin) && Number.isFinite(tpl.fmax) && tpl.tmax > tpl.tmin && tpl.fmax > tpl.fmin);
 }
 
 function isRoiValid(roi) {
   return Boolean(roi && Number.isFinite(roi.tmin) && Number.isFinite(roi.tmax) && Number.isFinite(roi.fmin) && Number.isFinite(roi.fmax) && roi.tmax > roi.tmin && roi.fmax > roi.fmin);
+}
+function cloneRoi(roi) {
+  return roi ? { tmin: Number(roi.tmin), tmax: Number(roi.tmax), fmin: Number(roi.fmin), fmax: Number(roi.fmax) } : null;
+}
+
+function roiDuration(roi) {
+  return roi && Number.isFinite(roi.tmax) && Number.isFinite(roi.tmin) ? Math.max(0, roi.tmax - roi.tmin) : 0;
+}
+
+function quantile(values, q) {
+  const clean = values.filter(Number.isFinite).sort((a, b) => a - b);
+  if (!clean.length) return 0;
+  const pos = clamp(q, 0, 1) * (clean.length - 1);
+  const lo = Math.floor(pos);
+  const hi = Math.min(clean.length - 1, lo + 1);
+  const u = pos - lo;
+  return clean[lo] * (1 - u) + clean[hi] * u;
+}
+
+function sampleEstimatorLabel(value) {
+  if (value === 'mean') return 'promedio alineado';
+  if (value === 'median') return 'mediana alineada';
+  if (value === 'medoid') return 'medoide';
+  if (value === 'consensus_ncc') return 'consenso NCC';
+  if (value === 'weighted_consensus') return 'consenso ponderado';
+  return 'consenso NCC';
+}
+
+function compoundSupportFromSamples(samples) {
+  const valid = (samples || []).filter(isRoiValid);
+  if (!valid.length) return null;
+  const fmin = quantile(valid.map(s => s.fmin), 0.10);
+  const fmax = quantile(valid.map(s => s.fmax), 0.90);
+  const dur = Math.max(...valid.map(roiDuration));
+  const ref = valid[valid.length - 1];
+  const center = (ref.tmin + ref.tmax) / 2;
+  const tmin = clamp(center - dur / 2, 0, state.display ? state.display.duration : Infinity);
+  const tmax = clamp(tmin + dur, 0, state.display ? state.display.duration : Infinity);
+  return { tmin, tmax, fmin: Math.min(fmin, fmax), fmax: Math.max(fmin, fmax) };
+}
+
+function sameSample(a, b) {
+  return sameRoi(a, b);
+}
+
+
+function roundForCache(v) {
+  return Number.isFinite(Number(v)) ? Number(v).toFixed(4) : 'nan';
+}
+
+function samplesCacheKey(samples, estimator, outW, outH) {
+  const valid = (samples || []).filter(isRoiValid);
+  const body = valid.map(s => [s.tmin, s.tmax, s.fmin, s.fmax].map(roundForCache).join(',')).join('|');
+  const disp = state.display ? `${state.display.width}x${state.display.height}:${roundForCache(state.display.fmin)}:${roundForCache(state.display.fmax)}:${state.display.freqScale}:${state.display.colormap}` : 'nodisplay';
+  return `${estimator || 'consensus_ncc'}::${outW}x${outH}::${disp}::${body}`;
+}
+
+function samplesBaseCacheKey(samples, outW, outH) {
+  const valid = (samples || []).filter(isRoiValid);
+  const body = valid.map(s => [s.tmin, s.tmax, s.fmin, s.fmax].map(roundForCache).join(',')).join('|');
+  const disp = state.display ? `${state.display.width}x${state.display.height}:${roundForCache(state.display.fmin)}:${roundForCache(state.display.fmax)}:${state.display.freqScale}:${state.display.colormap}` : 'nodisplay';
+  return `${outW}x${outH}::${disp}::${body}`;
+}
+
+function workerCompoundKey(samples, estimator) {
+  const valid = (samples || []).filter(isRoiValid);
+  const body = valid.map(s => [s.tmin, s.tmax, s.fmin, s.fmax].map(roundForCache).join(',')).join('|');
+  const disp = state.display ? `${state.display.width}x${state.display.height}:${roundForCache(state.display.fmin)}:${roundForCache(state.display.fmax)}:${state.display.freqScale}` : 'nodisplay';
+  return `${estimator || 'consensus_ncc'}::${disp}::${body}`;
+}
+
+function warmWorkerCompoundTemplate(tpl, samples, estimator) {
+  if (!state.worker || !tpl || !state.display) return;
+  const valid = (samples || []).filter(isRoiValid);
+  if (valid.length <= 1) return;
+  const key = `${tpl.id}::${workerCompoundKey(valid, estimator)}`;
+  if (state.workerCompoundWarmKeys.has(key)) return;
+  state.workerCompoundWarmKeys.add(key);
+  state.worker.postMessage({
+    type: 'warm-compound-template',
+    key,
+    samples: valid.map(cloneRoi),
+    sampleEstimator: estimator || 'consensus_ncc',
+  });
+}
+
+function ensureTemplateCompositeCache(tpl) {
+  if (!tpl) return null;
+  if (!(tpl.previewCache instanceof Map)) tpl.previewCache = new Map();
+  if (!(tpl.previewByMethod instanceof Map)) tpl.previewByMethod = new Map();
+  return tpl.previewByMethod;
+}
+
+function clearTemplateCompositeCache(tpl) {
+  if (!tpl) return;
+  tpl.previewCacheKey = null;
+  tpl.previewImageData = null;
+  tpl.previewBaseKey = null;
+  tpl.compoundCacheKey = null;
+  tpl.workerCompoundCacheKey = null;
+  if (tpl.previewCache && typeof tpl.previewCache.clear === 'function') tpl.previewCache.clear();
+  tpl.previewCache = new Map();
+  tpl.previewByMethod = new Map();
+  // La caché del worker es interna; esta marca evita asumir que ya está precalentada
+  // cuando cambiaron las muestras o el espectrograma.
+  state.workerCompoundWarmKeys = new Set();
+}
+
+function setSampleProgress(text = '', pct = null, visible = true) {
+  if (!el.sampleProgress) return;
+  el.sampleProgress.classList.toggle('is-hidden', !visible);
+  const bar = el.sampleProgress.querySelector('.sample-progress-bar');
+  const label = el.sampleProgress.querySelector('.sample-progress-text');
+  if (label) label.textContent = text;
+  if (bar && typeof pct === 'number') bar.style.width = `${Math.max(0, Math.min(100, pct))}%`;
+}
+
+function updateSamplePanelState(tpl = getActiveTemplate()) {
+  const enabled = Boolean(el.useMultiSamples?.checked);
+  if (el.samplePanel) el.samplePanel.classList.toggle('is-hidden', !enabled);
+  if (el.sampleEstimator) el.sampleEstimator.disabled = !enabled;
+  if (el.btnAddSample) el.btnAddSample.disabled = !enabled || !isRoiValid(state.roi);
+  const n = tpl && Array.isArray(tpl.samples) ? tpl.samples.filter(isRoiValid).length : 0;
+  if (el.btnRemoveSample) el.btnRemoveSample.disabled = !enabled || n === 0;
+  if (el.sampleSummary && enabled) {
+    el.sampleSummary.textContent = n
+      ? `Muestras agregadas: ${n}. Método: ${sampleEstimatorLabel(el.sampleEstimator?.value)}.`
+      : 'Marca una caja y pulsa Agregar muestra.';
+  }
+  drawSamplePreview(tpl);
+}
+
+function drawSamplePreview(tpl = getActiveTemplate()) {
+  const canvas = el.samplePreviewCanvas;
+  if (!canvas) return;
+  const ctx = canvas.getContext('2d');
+  const w = canvas.width;
+  const h = canvas.height;
+  ctx.clearRect(0, 0, w, h);
+  ctx.fillStyle = '#0f172a';
+  ctx.fillRect(0, 0, w, h);
+
+  const enabled = Boolean(el.useMultiSamples?.checked);
+  const validSamples = tpl && Array.isArray(tpl.samples) ? tpl.samples.filter(isRoiValid) : [];
+  if (!enabled || !state.display || !el.spectrogramCanvas || !validSamples.length) {
+    state.samplePreviewToken++;
+    setSampleProgress('', 0, false);
+    drawPreviewEmpty(ctx, w, h, enabled ? 'Agrega muestras para ver la plantilla compuesta' : '');
+    return;
+  }
+
+  const estimator = el.sampleEstimator?.value || tpl?.sampleEstimator || 'consensus_ncc';
+  const baseKey = samplesBaseCacheKey(validSamples, w, h);
+  const cacheKey = samplesCacheKey(validSamples, estimator, w, h);
+  const cacheByMethod = tpl ? ensureTemplateCompositeCache(tpl) : null;
+  if (tpl && tpl.previewBaseKey !== baseKey) {
+    // Cambiaron muestras/espectrograma/tamaño de preview: se invalida solo esta familia.
+    tpl.previewBaseKey = baseKey;
+    tpl.previewByMethod = new Map();
+  }
+  const cachedPreview = cacheByMethod ? cacheByMethod.get(estimator) : null;
+  if (cachedPreview) {
+    ctx.putImageData(cachedPreview, 0, 0);
+    drawSamplePreviewFrame(ctx, w, h, tpl, validSamples.length, estimator, true);
+    setSampleProgress(`Plantilla compuesta en caché · ${sampleEstimatorLabel(estimator)}.`, 100, true);
+    warmWorkerCompoundTemplate(tpl, validSamples, estimator);
+    return;
+  }
+  // Compatibilidad con la caché vieja basada en una clave completa.
+  if (tpl && tpl.previewCacheKey === cacheKey && tpl.previewImageData) {
+    ensureTemplateCompositeCache(tpl).set(estimator, tpl.previewImageData);
+    ctx.putImageData(tpl.previewImageData, 0, 0);
+    drawSamplePreviewFrame(ctx, w, h, tpl, validSamples.length, estimator, true);
+    setSampleProgress(`Plantilla compuesta en caché · ${sampleEstimatorLabel(estimator)}.`, 100, true);
+    warmWorkerCompoundTemplate(tpl, validSamples, estimator);
+    return;
+  }
+
+  const token = ++state.samplePreviewToken;
+  drawPreviewEmpty(ctx, w, h, 'Calculando plantilla compuesta...');
+  setSampleProgress('Calculando plantilla compuesta...', 18, true);
+
+  window.setTimeout(() => {
+    if (token !== state.samplePreviewToken) return;
+    const activeTpl = getActiveTemplate();
+    const currentSamples = activeTpl && Array.isArray(activeTpl.samples) ? activeTpl.samples.filter(isRoiValid) : [];
+    const currentEstimator = el.sampleEstimator?.value || activeTpl?.sampleEstimator || 'consensus_ncc';
+    const currentKey = samplesCacheKey(currentSamples, currentEstimator, w, h);
+    if (!activeTpl || currentKey !== cacheKey) return;
+
+    try {
+      setSampleProgress('Alineando muestras y construyendo consenso...', 55, true);
+      const composite = buildCompositePreviewImage(validSamples, w, h, estimator);
+      if (token !== state.samplePreviewToken) return;
+      if (composite) {
+        ensureTemplateCompositeCache(activeTpl).set(estimator, composite);
+        activeTpl.previewBaseKey = baseKey;
+        activeTpl.previewCacheKey = cacheKey;
+        activeTpl.previewImageData = composite;
+        ctx.putImageData(composite, 0, 0);
+        drawSamplePreviewFrame(ctx, w, h, activeTpl, validSamples.length, estimator, false);
+        setSampleProgress(`Plantilla compuesta lista · ${sampleEstimatorLabel(estimator)}.`, 100, true);
+        warmWorkerCompoundTemplate(activeTpl, validSamples, estimator);
+      } else {
+        drawPreviewEmpty(ctx, w, h, 'No pude construir la vista previa');
+        setSampleProgress('No pude construir la plantilla compuesta.', 100, true);
+      }
+    } catch (err) {
+      console.warn('No pude dibujar la plantilla compuesta:', err);
+      drawPreviewEmpty(ctx, w, h, 'No pude construir la vista previa');
+      setSampleProgress('Error al construir la plantilla compuesta.', 100, true);
+    }
+  }, 30);
+}
+
+function drawSamplePreviewFrame(ctx, w, h, tpl, sampleCount, estimatorValue, fromCache = false) {
+  const color = tpl?.color || '#00e5ff';
+  // El marco se aplica como borde CSS del canvas para no tapar píxeles
+  // importantes de la plantilla compuesta.
+  if (el.samplePreviewCanvas) {
+    el.samplePreviewCanvas.style.borderColor = color;
+    el.samplePreviewCanvas.style.boxShadow = `0 0 0 1px ${color}33`;
+  }
+  ctx.fillStyle = 'rgba(15,23,42,0.76)';
+  ctx.fillRect(8, h - 30, Math.min(w - 16, 332), 22);
+  ctx.fillStyle = '#ffffff';
+  ctx.font = '12px Arial';
+  ctx.textAlign = 'left';
+  ctx.textBaseline = 'middle';
+  const estimator = sampleEstimatorLabel(estimatorValue);
+  const cacheNote = fromCache ? ' · caché' : '';
+  ctx.fillText(`Plantilla compuesta · ${sampleCount} muestra(s) · ${estimator}${cacheNote}`, 14, h - 19);
+}
+
+function drawPreviewEmpty(ctx, w, h, text) {
+  if (el.samplePreviewCanvas) {
+    el.samplePreviewCanvas.style.borderColor = '#dbe4ee';
+    el.samplePreviewCanvas.style.boxShadow = 'none';
+  }
+  ctx.fillStyle = '#0f172a';
+  ctx.fillRect(0, 0, w, h);
+  if (!text) return;
+  ctx.fillStyle = '#cbd5e1';
+  ctx.font = '12px Arial';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillText(text, w / 2, h / 2);
+}
+
+function buildCompositePreviewImage(samples, outW, outH, estimator) {
+  if (!samples.length || !state.display || !el.spectrogramCanvas) return null;
+  const source = el.spectrogramCanvas;
+  const support = compoundSupportFromSamples(samples);
+  if (!support || !isRoiValid(support)) return null;
+
+  const supportWidth = Math.max(4, Math.round(Math.max(...samples.map(s => Math.abs(timeToX(s.tmax) - timeToX(s.tmin))))));
+  const sy1 = freqToY(support.fmax);
+  const sy2 = freqToY(support.fmin);
+  const supportHeight = Math.max(4, Math.round(Math.abs(sy2 - sy1)));
+
+  const rawPatches = [];
+  const tmp = document.createElement('canvas');
+  tmp.width = outW;
+  tmp.height = outH;
+  const tctx = tmp.getContext('2d', { willReadFrequently: true });
+
+  for (const sample of samples) {
+    const centroid = previewEnergyCentroid(sample);
+    const cropX = Math.round(centroid.x - supportWidth / 2);
+    const cropY = Math.round(centroid.y - supportHeight / 2);
+    tctx.clearRect(0, 0, outW, outH);
+    tctx.fillStyle = '#0f172a';
+    tctx.fillRect(0, 0, outW, outH);
+
+    const srcX = clamp(cropX, 0, source.width - 1);
+    const srcY = clamp(cropY, 0, source.height - 1);
+    const srcX2 = clamp(cropX + supportWidth, 0, source.width);
+    const srcY2 = clamp(cropY + supportHeight, 0, source.height);
+    const sw = Math.max(1, srcX2 - srcX);
+    const sh = Math.max(1, srcY2 - srcY);
+    const dx = ((srcX - cropX) / supportWidth) * outW;
+    const dy = ((srcY - cropY) / supportHeight) * outH;
+    const dw = (sw / supportWidth) * outW;
+    const dh = (sh / supportHeight) * outH;
+    tctx.drawImage(source, srcX, srcY, sw, sh, dx, dy, dw, dh);
+    rawPatches.push(new Uint8ClampedArray(tctx.getImageData(0, 0, outW, outH).data));
+  }
+
+  if (!rawPatches.length) return null;
+  const method = estimator || 'consensus_ncc';
+  const alignedInfo = alignPreviewPatchesBySimilarity(rawPatches, outW, outH);
+  const patchArrays = alignedInfo.patches;
+  const weights = alignedInfo.weights;
+
+  if (method === 'medoid') {
+    const idx = medoidIndexForImagePatches(patchArrays);
+    return new ImageData(new Uint8ClampedArray(patchArrays[idx]), outW, outH);
+  }
+
+  const out = new Uint8ClampedArray(outW * outH * 4);
+  if (method === 'mean') {
+    for (let i = 0; i < out.length; i += 4) {
+      let r = 0, g = 0, b = 0;
+      for (const arr of patchArrays) { r += arr[i]; g += arr[i + 1]; b += arr[i + 2]; }
+      out[i] = Math.round(r / patchArrays.length);
+      out[i + 1] = Math.round(g / patchArrays.length);
+      out[i + 2] = Math.round(b / patchArrays.length);
+      out[i + 3] = 255;
+    }
+  } else if (method === 'weighted_consensus') {
+    const sumWeights = weights.reduce((a, b) => a + b, 0) || 1;
+    for (let i = 0; i < out.length; i += 4) {
+      let r = 0, g = 0, b = 0;
+      for (let k = 0; k < patchArrays.length; k++) {
+        const arr = patchArrays[k];
+        const wk = weights[k] / sumWeights;
+        r += wk * arr[i]; g += wk * arr[i + 1]; b += wk * arr[i + 2];
+      }
+      out[i] = Math.round(r); out[i + 1] = Math.round(g); out[i + 2] = Math.round(b); out[i + 3] = 255;
+    }
+  } else if (method === 'consensus_ncc') {
+    const rv = [], gv = [], bv = [];
+    for (let i = 0; i < out.length; i += 4) {
+      rv.length = gv.length = bv.length = 0;
+      for (const arr of patchArrays) { rv.push(arr[i]); gv.push(arr[i + 1]); bv.push(arr[i + 2]); }
+      rv.sort((a, b) => a - b); gv.sort((a, b) => a - b); bv.sort((a, b) => a - b);
+      out[i] = quantileByteSorted(rv, 0.70);
+      out[i + 1] = quantileByteSorted(gv, 0.70);
+      out[i + 2] = quantileByteSorted(bv, 0.70);
+      out[i + 3] = 255;
+    }
+  } else {
+    const rv = [], gv = [], bv = [];
+    for (let i = 0; i < out.length; i += 4) {
+      rv.length = gv.length = bv.length = 0;
+      for (const arr of patchArrays) { rv.push(arr[i]); gv.push(arr[i + 1]); bv.push(arr[i + 2]); }
+      rv.sort((a, b) => a - b); gv.sort((a, b) => a - b); bv.sort((a, b) => a - b);
+      out[i] = medianByte(rv);
+      out[i + 1] = medianByte(gv);
+      out[i + 2] = medianByte(bv);
+      out[i + 3] = 255;
+    }
+  }
+  return new ImageData(out, outW, outH);
+}
+
+function alignPreviewPatchesBySimilarity(patches, w, h) {
+  if (patches.length <= 1) return { patches, weights: patches.map(() => 1) };
+  const refIdx = medoidIndexForImagePatches(patches);
+  const ref = patches[refIdx];
+  const maxDx = Math.max(1, Math.min(16, Math.round(w * 0.06)));
+  const maxDy = Math.max(1, Math.min(10, Math.round(h * 0.10)));
+  const aligned = [];
+  const weights = [];
+  for (let k = 0; k < patches.length; k++) {
+    if (k === refIdx) {
+      aligned.push(patches[k]);
+      weights.push(1);
+      continue;
+    }
+    let best = patches[k];
+    let bestScore = weightedImageSimilarity(ref, best);
+    for (let dy = -maxDy; dy <= maxDy; dy++) {
+      for (let dx = -maxDx; dx <= maxDx; dx++) {
+        if (dx === 0 && dy === 0) continue;
+        const shifted = shiftImagePatch(patches[k], w, h, dx, dy);
+        const score = weightedImageSimilarity(ref, shifted);
+        if (score > bestScore) { bestScore = score; best = shifted; }
+      }
+    }
+    aligned.push(best);
+    weights.push(Math.max(0.05, clamp((bestScore + 1) / 2, 0.05, 1)));
+  }
+  return { patches: aligned, weights };
+}
+
+function shiftImagePatch(arr, w, h, dx, dy) {
+  const out = new Uint8ClampedArray(arr.length);
+  for (let i = 0; i < out.length; i += 4) { out[i] = 15; out[i + 1] = 23; out[i + 2] = 42; out[i + 3] = 255; }
+  for (let y = 0; y < h; y++) {
+    const sy = y - dy;
+    if (sy < 0 || sy >= h) continue;
+    for (let x = 0; x < w; x++) {
+      const sx = x - dx;
+      if (sx < 0 || sx >= w) continue;
+      const src = (sy * w + sx) * 4;
+      const dst = (y * w + x) * 4;
+      out[dst] = arr[src]; out[dst + 1] = arr[src + 1]; out[dst + 2] = arr[src + 2]; out[dst + 3] = 255;
+    }
+  }
+  return out;
+}
+
+function weightedImageSimilarity(a, b) {
+  const valsA = [];
+  const valsB = [];
+  const step = Math.max(4, Math.floor(a.length / 2000 / 4) * 4);
+  for (let i = 0; i < a.length; i += step) { valsA.push(luminance(a[i], a[i + 1], a[i + 2])); valsB.push(luminance(b[i], b[i + 1], b[i + 2])); }
+  valsA.sort((x, y) => x - y); valsB.sort((x, y) => x - y);
+  const thrA = valsA[Math.floor(valsA.length * 0.72)] || 0;
+  const thrB = valsB[Math.floor(valsB.length * 0.72)] || 0;
+  let sumW = 0, ma = 0, mb = 0;
+  for (let i = 0; i < a.length; i += 4) {
+    const la = luminance(a[i], a[i + 1], a[i + 2]);
+    const lb = luminance(b[i], b[i + 1], b[i + 2]);
+    const weight = Math.max(Math.max(0, la - thrA), Math.max(0, lb - thrB)) + 1e-3;
+    sumW += weight; ma += weight * la; mb += weight * lb;
+  }
+  if (sumW <= 1e-9) return 0;
+  ma /= sumW; mb /= sumW;
+  let num = 0, da = 0, db = 0;
+  for (let i = 0; i < a.length; i += 4) {
+    const la = luminance(a[i], a[i + 1], a[i + 2]);
+    const lb = luminance(b[i], b[i + 1], b[i + 2]);
+    const weight = Math.max(Math.max(0, la - thrA), Math.max(0, lb - thrB)) + 1e-3;
+    const xa = la - ma; const xb = lb - mb;
+    num += weight * xa * xb; da += weight * xa * xa; db += weight * xb * xb;
+  }
+  return num / (Math.sqrt(da * db) + 1e-9);
+}
+
+function quantileByteSorted(values, q) {
+  if (!values.length) return 0;
+  const pos = clamp(q, 0, 1) * (values.length - 1);
+  const lo = Math.floor(pos);
+  const hi = Math.min(values.length - 1, lo + 1);
+  const u = pos - lo;
+  return Math.round(values[lo] * (1 - u) + values[hi] * u);
+}
+
+function medoidIndexForImagePatches(patches) {
+  if (patches.length <= 1) return 0;
+  const vectors = patches.map(arr => imagePatchVector(arr));
+  let bestIdx = 0;
+  let bestScore = -Infinity;
+  for (let i = 0; i < vectors.length; i++) {
+    let sum = 0;
+    for (let j = 0; j < vectors.length; j++) {
+      if (i === j) continue;
+      sum += dotVectors(vectors[i], vectors[j]);
+    }
+    if (sum > bestScore) { bestScore = sum; bestIdx = i; }
+  }
+  return bestIdx;
+}
+
+function imagePatchVector(arr) {
+  const step = Math.max(4, Math.floor(arr.length / 900));
+  const vals = [];
+  for (let i = 0; i < arr.length; i += step * 4) vals.push(luminance(arr[i], arr[i + 1], arr[i + 2]));
+  const mean = vals.reduce((a, b) => a + b, 0) / Math.max(1, vals.length);
+  let norm = 0;
+  for (let i = 0; i < vals.length; i++) { vals[i] -= mean; norm += vals[i] * vals[i]; }
+  norm = Math.sqrt(norm) || 1;
+  return vals.map(v => v / norm);
+}
+
+function dotVectors(a, b) {
+  let s = 0;
+  const n = Math.min(a.length, b.length);
+  for (let i = 0; i < n; i++) s += a[i] * b[i];
+  return s;
+}
+
+function medianByte(values) {
+  if (!values.length) return 0;
+  const mid = Math.floor(values.length / 2);
+  return values.length % 2 ? values[mid] : Math.round((values[mid - 1] + values[mid]) / 2);
+}
+
+function previewEnergyCentroid(roi) {
+  const source = el.spectrogramCanvas;
+  const ctx = source.getContext('2d', { willReadFrequently: true });
+  const x1 = Math.floor(timeToX(roi.tmin));
+  const x2 = Math.ceil(timeToX(roi.tmax));
+  const y1 = Math.floor(freqToY(roi.fmax));
+  const y2 = Math.ceil(freqToY(roi.fmin));
+  const x = clamp(Math.min(x1, x2), 0, source.width - 1);
+  const y = clamp(Math.min(y1, y2), 0, source.height - 1);
+  const w = clamp(Math.abs(x2 - x1), 1, source.width - x);
+  const h = clamp(Math.abs(y2 - y1), 1, source.height - y);
+  const data = ctx.getImageData(x, y, w, h).data;
+  const lum = [];
+  const step = Math.max(4, Math.floor(data.length / 1600 / 4) * 4);
+  for (let i = 0; i < data.length; i += step) lum.push(luminance(data[i], data[i + 1], data[i + 2]));
+  lum.sort((a, b) => a - b);
+  const thr = lum.length ? lum[Math.floor(lum.length * 0.75)] : 0;
+  let sumW = 0, sumX = 0, sumY = 0;
+  for (let py = 0; py < h; py++) {
+    for (let px = 0; px < w; px++) {
+      const idx = (py * w + px) * 4;
+      const weight = Math.max(0, luminance(data[idx], data[idx + 1], data[idx + 2]) - thr);
+      if (weight > 0) {
+        sumW += weight;
+        sumX += (x + px) * weight;
+        sumY += (y + py) * weight;
+      }
+    }
+  }
+  if (sumW <= 1e-9) return { x: x + w / 2, y: y + h / 2 };
+  return { x: sumX / sumW, y: sumY / sumW };
+}
+
+function luminance(r, g, b) {
+  return 0.2126 * r + 0.7152 * g + 0.0722 * b;
+}
+
+function ensureActiveTemplateForSamples() {
+  let tpl = getActiveTemplate();
+  if (!tpl) {
+    tpl = createDraftTemplate();
+    if (el.roiLabel) el.roiLabel.value = displayLabelForTemplate(tpl);
+  }
+  tpl.useMultiSamples = Boolean(el.useMultiSamples?.checked);
+  tpl.sampleEstimator = el.sampleEstimator?.value || tpl.sampleEstimator || 'consensus_ncc';
+  if (!Array.isArray(tpl.samples)) tpl.samples = [];
+  return tpl;
+}
+
+function addCurrentSampleToActiveTemplate({ silent = false } = {}) {
+  if (!isRoiValid(state.roi)) {
+    if (!silent) showToast('Sin muestra válida', 'Marca una caja antes de agregar una muestra.');
+    return null;
+  }
+  const tpl = ensureActiveTemplateForSamples();
+  tpl.useMultiSamples = true;
+  tpl.sampleEstimator = el.sampleEstimator?.value || 'consensus_ncc';
+  const sample = cloneRoi(state.roi);
+  const exists = tpl.samples.some(s => sameRoiLoose(s, sample, 0.02, 10));
+  if (!exists) {
+    tpl.samples.push(sample);
+    clearTemplateCompositeCache(tpl);
+  }
+  const support = compoundSupportFromSamples(tpl.samples);
+  if (support) {
+    tpl.tmin = support.tmin; tpl.tmax = support.tmax; tpl.fmin = support.fmin; tpl.fmax = support.fmax;
+  }
+  tpl.matches = [];
+  tpl.hasSearched = false;
+  tpl.autoAdjust = true;
+  tpl.showMatches = true;
+  tpl.isDraft = false;
+  state.activeTemplateId = tpl.id;
+  if (el.useMultiSamples) el.useMultiSamples.checked = true;
+  if (el.sampleEstimator) el.sampleEstimator.value = tpl.sampleEstimator;
+  updateSamplePanelState(tpl);
+  renderTemplateNavigator();
+  updateSearchButtonsState();
+  drawOverlay();
+  if (!silent) showToast('Muestra agregada', `${displayLabelForTemplate(tpl)} tiene ${tpl.samples.length} muestra(s).`);
+  return tpl;
+}
+
+function removeLastSampleFromActiveTemplate() {
+  const tpl = getActiveTemplate();
+  if (!tpl || !Array.isArray(tpl.samples) || !tpl.samples.length) return;
+  tpl.samples.pop();
+  clearTemplateCompositeCache(tpl);
+  const support = compoundSupportFromSamples(tpl.samples);
+  if (support) {
+    tpl.tmin = support.tmin; tpl.tmax = support.tmax; tpl.fmin = support.fmin; tpl.fmax = support.fmax;
+  } else {
+    tpl.tmin = tpl.tmax = tpl.fmin = tpl.fmax = 0;
+  }
+  tpl.matches = [];
+  tpl.hasSearched = false;
+  tpl.autoAdjust = true;
+  updateSamplePanelState(tpl);
+  renderTemplateNavigator();
+  refreshCombinedMatches();
+  updateSamplePanelState(tpl);
+  updateSearchSummaryText();
+  drawOverlay();
 }
 
 function hasSearchableTemplateOrCurrentRoi() {
@@ -401,6 +992,10 @@ function createDraftTemplate() {
     strideSec: Number(el.strideSec?.value || 0.10),
     autoAdjust: true,
     showMatches: true,
+    useMultiSamples: Boolean(el.useMultiSamples?.checked),
+    sampleEstimator: el.sampleEstimator?.value || 'consensus_ncc',
+    samples: [],
+    previewCache: new Map(),
     matches: [],
     hasSearched: false,
     tmin: 0,
@@ -428,6 +1023,10 @@ function syncActiveTemplateParamsFromUi() {
   tpl.strideSec = Number(el.strideSec.value);
   tpl.autoAdjust = Boolean(el.autoAdjustParams?.checked);
   tpl.showMatches = Boolean(el.showActiveMatches?.checked);
+  tpl.useMultiSamples = Boolean(el.useMultiSamples?.checked);
+  tpl.sampleEstimator = el.sampleEstimator?.value || tpl.sampleEstimator || 'consensus_ncc';
+  if (!Array.isArray(tpl.samples)) tpl.samples = [];
+  updateSamplePanelState(tpl);
 
   // Mantener sincronía bidireccional de etiquetas:
   // - tabla -> plantilla ya usa updateTemplateLabel()
@@ -448,6 +1047,9 @@ function applyTemplateToFields(tpl) {
     el.roiFmax.value = 0;
     if (el.roiLabel) el.roiLabel.value = '';
     if (el.showActiveMatches) el.showActiveMatches.checked = true;
+    if (el.useMultiSamples) el.useMultiSamples.checked = false;
+    if (el.sampleEstimator) el.sampleEstimator.value = 'consensus_ncc';
+    updateSamplePanelState(null);
     el.roiSummary.textContent = 'Sin plantilla.';
     state.roi = null;
     drawOverlay();
@@ -464,6 +1066,9 @@ function applyTemplateToFields(tpl) {
   setStrideControls(tpl.strideSec ?? 0.10);
   if (el.autoAdjustParams) el.autoAdjustParams.checked = tpl.autoAdjust ?? !tpl.hasSearched;
   if (el.showActiveMatches) el.showActiveMatches.checked = tpl.showMatches !== false;
+  if (el.useMultiSamples) el.useMultiSamples.checked = Boolean(tpl.useMultiSamples);
+  if (el.sampleEstimator) el.sampleEstimator.value = tpl.sampleEstimator || 'consensus_ncc';
+  updateSamplePanelState(tpl);
   if (el.btnSaveRoi) el.btnSaveRoi.disabled = false;
   if (el.btnClearRoi) el.btnClearRoi.disabled = false;
   if (el.btnRemoveTemplate) el.btnRemoveTemplate.disabled = false;
@@ -561,6 +1166,9 @@ function clearFieldsForNewTemplate() {
   el.roiFmin.value = 0;
   el.roiFmax.value = 0;
   if (el.roiLabel) el.roiLabel.value = '';
+  if (el.useMultiSamples) el.useMultiSamples.checked = false;
+  if (el.sampleEstimator) el.sampleEstimator.value = 'consensus_ncc';
+  updateSamplePanelState(null);
   if (el.autoAdjustParams) el.autoAdjustParams.checked = true;
   if (el.showActiveMatches) el.showActiveMatches.checked = true;
   el.roiSummary.textContent = 'Dibuja una caja para crear la primera plantilla.';
@@ -727,6 +1335,10 @@ function onWorkerMessage(ev) {
     hideProcessing();
     drawOverlay();
     showToast('Visualización actualizada', 'Se aplicó la escala/color del espectrograma.');
+    return;
+  }
+
+  if (msg.type === 'compound-template-warmed') {
     return;
   }
 
@@ -1169,7 +1781,15 @@ function drawOverlay() {
   drawMatches(ctx);
   drawTemplates(ctx);
   const active = getActiveTemplate();
-  if (state.roi && (!active || !sameRoi(state.roi, active))) {
+  const roiAlreadySample = active && active.useMultiSamples && Array.isArray(active.samples)
+    ? active.samples.some(s => sameRoi(state.roi, s))
+    : false;
+  const shouldDrawTemp = state.roi && (
+    !active ||
+    !sameRoi(state.roi, active) ||
+    (active.useMultiSamples && !roiAlreadySample)
+  );
+  if (shouldDrawTemp) {
     // Caja temporal de selección: negra y entrecortada para contrastar con magma.
     drawRoi(ctx, state.roi, '', '#000000', 'rgba(0,0,0,0.04)', 2.5, false, true);
   }
@@ -1178,6 +1798,14 @@ function drawOverlay() {
 function sameRoi(a, b) {
   if (!a || !b) return false;
   return Math.abs(a.tmin - b.tmin) < 1e-6 && Math.abs(a.tmax - b.tmax) < 1e-6 && Math.abs(a.fmin - b.fmin) < 1e-6 && Math.abs(a.fmax - b.fmax) < 1e-6;
+}
+
+function sameRoiLoose(a, b, timeTol = 0.01, freqTol = 5) {
+  if (!a || !b) return false;
+  return Math.abs(Number(a.tmin) - Number(b.tmin)) <= timeTol
+    && Math.abs(Number(a.tmax) - Number(b.tmax)) <= timeTol
+    && Math.abs(Number(a.fmin) - Number(b.fmin)) <= freqTol
+    && Math.abs(Number(a.fmax) - Number(b.fmax)) <= freqTol;
 }
 
 function hexToRgba(hex, alpha) {
@@ -1217,8 +1845,15 @@ function drawTemplates(ctx) {
   for (const tpl of state.templates) {
     if (!isTemplateValid(tpl)) continue;
     const active = tpl.id === state.activeTemplateId;
-    const roi = { tmin: tpl.tmin, tmax: tpl.tmax, fmin: tpl.fmin, fmax: tpl.fmax };
-    drawRoi(ctx, roi, displayLabelForTemplate(tpl), tpl.color, hexToRgba(tpl.color, active ? 0.10 : 0.05), active ? 3 : 2, active);
+    if (tpl.useMultiSamples && Array.isArray(tpl.samples) && tpl.samples.length) {
+      tpl.samples.filter(isRoiValid).forEach((sample, idx) => {
+        const label = idx === 0 ? `${displayLabelForTemplate(tpl)} (${tpl.samples.length})` : '';
+        drawRoi(ctx, sample, label, tpl.color, hexToRgba(tpl.color, active ? 0.08 : 0.04), active ? 2.4 : 1.8, active && idx === 0, true);
+      });
+    } else {
+      const roi = { tmin: tpl.tmin, tmax: tpl.tmax, fmin: tpl.fmin, fmax: tpl.fmax };
+      drawRoi(ctx, roi, displayLabelForTemplate(tpl), tpl.color, hexToRgba(tpl.color, active ? 0.10 : 0.05), active ? 3 : 2, active);
+    }
   }
 }
 
@@ -1327,6 +1962,7 @@ function setRoi(roi, fromFields = false) {
     if (activeTpl) activeTpl.autoAdjust = true;
   }
   if (el.btnAddTemplate) el.btnAddTemplate.disabled = !validNow;
+  updateSamplePanelState(activeTpl);
   renderTemplateNavigator();
   updateSearchButtonsState();
   updateSearchSummaryText();
@@ -1726,6 +2362,10 @@ function saveCurrentTemplate({ silent = false } = {}) {
       strideSec: Number(el.strideSec.value || 0.10),
       autoAdjust: true,
       showMatches: true,
+      useMultiSamples: Boolean(el.useMultiSamples?.checked),
+      sampleEstimator: el.sampleEstimator?.value || 'consensus_ncc',
+      samples: [],
+      previewCache: new Map(),
       matches: [],
       hasSearched: false,
     };
@@ -1733,12 +2373,32 @@ function saveCurrentTemplate({ silent = false } = {}) {
     state.activeTemplateId = id;
   }
 
-  const roiChanged = !isNew && !sameRoi(state.roi, tpl);
+  tpl.useMultiSamples = Boolean(el.useMultiSamples?.checked);
+  tpl.sampleEstimator = el.sampleEstimator?.value || tpl.sampleEstimator || 'consensus_ncc';
+  if (!Array.isArray(tpl.samples)) tpl.samples = [];
+
+  if (tpl.useMultiSamples && isRoiValid(state.roi)) {
+    const currentSupport = tpl.samples.length ? compoundSupportFromSamples(tpl.samples) : null;
+    const sample = cloneRoi(state.roi);
+    // Cuando la plantilla compuesta ya fue guardada, los campos muestran el soporte.
+    // Al buscar o cambiar de panel, no debemos agregar ese soporte como si fuera una
+    // nueva muestra; eso cambiaba la firma de muestras y rompía la caché.
+    const looksLikeSupport = currentSupport && sameRoiLoose(sample, currentSupport, 0.02, 10);
+    const alreadyExists = tpl.samples.some(s => sameRoiLoose(s, sample, 0.02, 10));
+    if (!looksLikeSupport && !alreadyExists) {
+      tpl.samples.push(sample);
+      clearTemplateCompositeCache(tpl);
+    }
+  }
+
+  const support = tpl.useMultiSamples ? compoundSupportFromSamples(tpl.samples) : null;
+  const nextGeometry = support || state.roi;
+  const roiChanged = !isNew && !sameRoi(nextGeometry, tpl);
   const wasDraft = Boolean(tpl.isDraft);
-  tpl.tmin = state.roi.tmin;
-  tpl.tmax = state.roi.tmax;
-  tpl.fmin = state.roi.fmin;
-  tpl.fmax = state.roi.fmax;
+  tpl.tmin = nextGeometry.tmin;
+  tpl.tmax = nextGeometry.tmax;
+  tpl.fmin = nextGeometry.fmin;
+  tpl.fmax = nextGeometry.fmax;
   if (isNew || roiChanged || wasDraft) {
     tpl.matches = [];
     tpl.hasSearched = false;
@@ -1854,12 +2514,9 @@ function clearRoi() {
 
 function searchEmbedding(options = {}) {
   if (!state.worker) return;
-  if (state.display) {
-    applyRoiFromFields();
-  }
-  if (isRoiValid(state.roi)) {
-    saveCurrentTemplate({ silent: true });
-  }
+  // En el panel Búsqueda no creamos plantillas nuevas automáticamente.
+  // Solo sincronizamos los parámetros de la plantilla activa para permitir
+  // ajustes manuales finos después de la primera búsqueda autoajustada.
   if (!state.templates.length) return;
   const activeBeforeSearch = getActiveTemplate();
   if (activeBeforeSearch) {
@@ -1900,7 +2557,7 @@ function searchEmbedding(options = {}) {
 
   showProcessing(
     isBatchSearch ? 'Buscando plantillas pendientes' : 'Buscando similares',
-    isBatchSearch ? 'Procesando solo las plantillas nuevas o pendientes...' : 'Comparando embeddings...',
+    isBatchSearch ? 'Procesando solo las plantillas nuevas o pendientes...' : 'Comparando con el método seleccionado...',
     10
   );
   setStatus('Buscando', isBatchSearch ? 'Se conservan las coincidencias ya calculadas de otras plantillas.' : 'Procesando plantilla activa.');
@@ -1926,6 +2583,9 @@ function startNextSearchInQueue() {
   state.worker.postMessage({
     type: 'search-embedding',
     roi,
+    samples: tpl.useMultiSamples ? (tpl.samples || []) : [],
+    useMultiSamples: Boolean(tpl.useMultiSamples),
+    sampleEstimator: tpl.sampleEstimator || 'consensus_ncc',
     metric: tpl.metric || el.metricSelect.value || 'coseno',
     scoreThreshold: Number(tpl.scoreThreshold ?? el.scoreThreshold.value ?? 0.85),
     strideSec: Number(tpl.strideSec ?? el.strideSec.value ?? 0.10),
@@ -2096,6 +2756,46 @@ function attachEvents() {
   }
   if (el.showActiveMatches) el.showActiveMatches.addEventListener('change', () => { syncActiveTemplateParamsFromUi(); drawOverlay(); });
   if (el.autoAdjustParams) el.autoAdjustParams.addEventListener('change', syncActiveTemplateParamsFromUi);
+  if (el.useMultiSamples) el.useMultiSamples.addEventListener('change', () => {
+    const tpl = getActiveTemplate();
+    if (tpl) {
+      tpl.useMultiSamples = Boolean(el.useMultiSamples.checked);
+      if (!Array.isArray(tpl.samples)) tpl.samples = [];
+      tpl.sampleEstimator = el.sampleEstimator?.value || tpl.sampleEstimator || 'consensus_ncc';
+      clearTemplateCompositeCache(tpl);
+      tpl.matches = [];
+      tpl.hasSearched = false;
+      tpl.autoAdjust = true;
+    }
+    updateSamplePanelState(tpl);
+    renderTemplateNavigator();
+    updateSearchButtonsState();
+    drawOverlay();
+  });
+  if (el.sampleEstimator) el.sampleEstimator.addEventListener('change', () => {
+    const tpl = getActiveTemplate();
+    if (tpl) {
+      const previousEstimator = tpl.sampleEstimator || 'consensus_ncc';
+      tpl.sampleEstimator = el.sampleEstimator.value || 'consensus_ncc';
+
+      // IMPORTANTE: no limpiar previewCache aquí.
+      // Cambiar de método de plantilla debe permitir volver instantáneamente
+      // a un método ya calculado. El caché solo se invalida cuando cambian
+      // las muestras, el audio o la configuración del espectrograma.
+      if (tpl.sampleEstimator !== previousEstimator) {
+        // Los resultados existentes pertenecen al método anterior; marcamos
+        // la plantilla como pendiente para que el usuario recalcule si desea,
+        // pero conservamos la caché visual de todos los métodos ya calculados.
+        tpl.matches = [];
+        tpl.hasSearched = false;
+        tpl.autoAdjust = true;
+      }
+    }
+    updateSamplePanelState(tpl);
+    updateSearchButtonsState();
+  });
+  if (el.btnAddSample) el.btnAddSample.addEventListener('click', () => addCurrentSampleToActiveTemplate({ silent: false }));
+  if (el.btnRemoveSample) el.btnRemoveSample.addEventListener('click', removeLastSampleFromActiveTemplate);
   el.accordionPanels.forEach(panel => {
     const head = panel.querySelector('.accordion-head');
     if (head) head.addEventListener('click', () => togglePanel(panel.dataset.panel));

@@ -13,6 +13,7 @@ let STORE = {
   fmax: 0,
   freqScale: 'linear',
   colormap: 'magma',
+  compoundTemplateCache: new Map(),
 };
 
 const EPS = 1e-12;
@@ -33,6 +34,8 @@ self.onmessage = (ev) => {
       renderStoredSpectrogram(msg.config);
     } else if (msg.type === 'search-embedding') {
       searchEmbedding(msg);
+    } else if (msg.type === 'warm-compound-template') {
+      warmCompoundTemplate(msg);
     }
   } catch (err) {
     self.postMessage({ type: 'error', error: err.message || String(err) });
@@ -48,6 +51,7 @@ function postSearchProgress(message, progress) {
 }
 
 function buildSpectrogram(samples, sampleRate, config) {
+  STORE.compoundTemplateCache = new Map();
   const nFft = config.nFft || 1024;
   const hop = config.hopLength || 512;
   const displayFmin = config.displayFminHz ?? 0;
@@ -114,6 +118,7 @@ function buildSpectrogram(samples, sampleRate, config) {
     fmax: freqs[nFreq - 1],
     freqScale,
     colormap,
+    compoundTemplateCache: new Map(),
   };
 
   postProgress('Renderizando imagen del espectrograma...', 78);
@@ -318,6 +323,15 @@ function magmaApprox(t) {
   return [252, 253, 191];
 }
 
+function warmCompoundTemplate(msg) {
+  if (!STORE.Sdb) return;
+  const rawSamples = Array.isArray(msg.samples) ? msg.samples.filter(isValidRoiMsg) : [];
+  if (rawSamples.length <= 1) return;
+  const estimator = normalizeSampleEstimator(msg.sampleEstimator);
+  buildCompoundTemplateSpec(rawSamples, estimator);
+  self.postMessage({ type: 'compound-template-warmed', key: msg.key || '' });
+}
+
 function searchEmbedding(msg) {
   if (!STORE.Sdb) throw new Error('No hay espectrograma en memoria.');
   const roi = msg.roi;
@@ -326,20 +340,34 @@ function searchEmbedding(msg) {
   let threshold = Number(msg.scoreThreshold ?? 0.85);
   let strideSec = Number(msg.strideSec ?? 0.10);
   const maxMatches = Number(msg.maxMatches ?? 500);
-  const idx = roiToIndices(roi);
-  const [iF0, iF1, iT0, iT1] = idx;
-  const h = iF1 - iF0;
-  const w = iT1 - iT0;
-  if (h < 4 || w < 4) throw new Error(`ROI demasiado pequeño: ${h} x ${w}`);
+  const rawSamples = Array.isArray(msg.samples) ? msg.samples.filter(isValidRoiMsg) : [];
+  const useMulti = Boolean(msg.useMultiSamples) && rawSamples.length > 0;
+  const estimator = normalizeSampleEstimator(msg.sampleEstimator);
 
-  const roiDuration = Math.max(0.001, roi.tmax - roi.tmin);
+  const templateSpec = useMulti
+    ? buildCompoundTemplateSpec(rawSamples, estimator)
+    : buildSingleTemplateSpec(roi);
+
+  const { iF0, iF1, iT0, iT1, h, w, template, roiDuration } = templateSpec;
+  if (h < 4 || w < 4) throw new Error(`Plantilla demasiado pequeña: ${h} x ${w}`);
+
   if (autoAdjust) {
     strideSec = autoStrideFromDuration(roiDuration);
   }
 
-  postSearchProgress(autoAdjust ? 'Autoajustando separación entre ventanas...' : 'Extrayendo embedding de la plantilla...', 12);
-  const template = extractPatch(iF0, iF1, iT0, iT1);
-  const templateEmb = patchToEmbedding(template, h, w, 48);
+  const useTemporalNcc = metric === 'correlacion_cruzada';
+  const useNcc2d = metric === 'correlacion_cruzada_2d';
+  const useNcc2dMultiScale = metric === 'correlacion_2d_multiescala';
+  const usesLocalComparison = useTemporalNcc || useNcc2d || useNcc2dMultiScale;
+  const localMethodLabel = useNcc2dMultiScale ? 'correlación 2D multi-escala' : (useNcc2d ? 'correlación cruzada 2D' : (useTemporalNcc ? 'correlación cruzada' : ''));
+  postSearchProgress(autoAdjust ? 'Autoajustando separación entre ventanas...' : (usesLocalComparison ? `Preparando ${localMethodLabel}...` : 'Extrayendo embedding de la plantilla...'), 12);
+  const templateEmbeddings = !usesLocalComparison
+    ? (templateSpec.templateEmbeddings && templateSpec.templateEmbeddings.length
+      ? templateSpec.templateEmbeddings
+      : [patchToEmbedding(template, h, w, 48)])
+    : null;
+  const nccOutSize = useNcc2dMultiScale ? 24 : 28;
+  const templateNcc = usesLocalComparison ? patchToNccArray(template, h, w, nccOutSize) : null;
   const strideFrames = Math.max(1, Math.round(strideSec * STORE.sampleRate / STORE.hopLength));
   const nPositions = STORE.nFrames - w + 1;
   const totalSteps = Math.ceil(nPositions / strideFrames);
@@ -349,8 +377,19 @@ function searchEmbedding(msg) {
 
   for (let col0 = 0; col0 < nPositions; col0 += strideFrames) {
     const candidate = extractPatch(iF0, iF1, col0, col0 + w);
-    const emb = patchToEmbedding(candidate, h, w, 48);
-    const score = similarity(templateEmb, emb, metric);
+    let score = -Infinity;
+    if (useTemporalNcc) {
+      score = temporalNccScore(templateNcc, candidate, h, w, nccOutSize);
+    } else if (useNcc2dMultiScale) {
+      score = ncc2dMultiScaleScore(templateNcc, candidate, h, w, nccOutSize);
+    } else if (useNcc2d) {
+      score = ncc2dScore(templateNcc, candidate, h, w, nccOutSize);
+    } else {
+      const emb = patchToEmbedding(candidate, h, w, 48);
+      for (const templateEmb of templateEmbeddings) {
+        score = Math.max(score, similarity(templateEmb, emb, metric));
+      }
+    }
     candidates.push({
       tmin: frameToTime(col0),
       tmax: frameToTime(Math.min(STORE.nFrames - 1, col0 + w - 1)),
@@ -365,7 +404,8 @@ function searchEmbedding(msg) {
 
     if (stepIndex % progressEvery === 0) {
       const pct = 15 + Math.round((stepIndex / Math.max(1, totalSteps)) * 70);
-      postSearchProgress(`Comparando embeddings... ${stepIndex.toLocaleString()} / ${totalSteps.toLocaleString()}`, pct);
+      const progressLabel = useNcc2dMultiScale ? 'Correlación 2D multi-escala' : (useNcc2d ? 'Correlación cruzada 2D' : (useTemporalNcc ? 'Correlación cruzada temporal' : 'Comparando embeddings'));
+      postSearchProgress(`${progressLabel}... ${stepIndex.toLocaleString()} / ${totalSteps.toLocaleString()}`, pct);
     }
     stepIndex++;
   }
@@ -403,7 +443,7 @@ function searchEmbedding(msg) {
     auto = {
       scoreThreshold: threshold,
       strideSec,
-      method: 'picos + codo robusto + límites de candidatos',
+      method: useMulti ? `plantilla compuesta (${sampleEstimatorLabel(estimator)}) + ${comparisonMethodLabel(metric)} + picos/codo robusto` : `${comparisonMethodLabel(metric)} + picos/codo robusto + límites de candidatos`,
       candidatesEvaluated: candidates.length,
       rankedCandidates: rankedAll.length,
       rankedForThreshold: rankedForThreshold.length,
@@ -421,6 +461,343 @@ function searchEmbedding(msg) {
   const kept = rankedAll.filter(m => m.score >= threshold).slice(0, limit);
   self.postMessage({ type: 'search-ready', matches: kept, auto });
 }
+function isValidRoiMsg(roi) {
+  return Boolean(roi && Number.isFinite(Number(roi.tmin)) && Number.isFinite(Number(roi.tmax)) && Number.isFinite(Number(roi.fmin)) && Number.isFinite(Number(roi.fmax)) && Number(roi.tmax) > Number(roi.tmin) && Number(roi.fmax) > Number(roi.fmin));
+}
+
+function buildSingleTemplateSpec(roi) {
+  const idx = roiToIndices(roi);
+  const [iF0, iF1, iT0, iT1] = idx;
+  const h = iF1 - iF0;
+  const w = iT1 - iT0;
+  return {
+    iF0, iF1, iT0, iT1, h, w,
+    roiDuration: Math.max(0.001, roi.tmax - roi.tmin),
+    template: extractPatch(iF0, iF1, iT0, iT1),
+  };
+}
+
+function percentileNum(values, q) {
+  const clean = values.filter(Number.isFinite).sort((a, b) => a - b);
+  if (!clean.length) return 0;
+  const pos = clamp(q, 0, 1) * (clean.length - 1);
+  const lo = Math.floor(pos);
+  const hi = Math.min(clean.length - 1, lo + 1);
+  const u = pos - lo;
+  return clean[lo] * (1 - u) + clean[hi] * u;
+}
+
+function normalizeSampleEstimator(value) {
+  if (value === 'mean') return 'mean';
+  if (value === 'median') return 'median';
+  if (value === 'medoid') return 'medoid';
+  if (value === 'consensus_ncc') return 'consensus_ncc';
+  if (value === 'weighted_consensus') return 'weighted_consensus';
+  return 'consensus_ncc';
+}
+
+
+function comparisonMethodLabel(value) {
+  if (value === 'coseno') return 'coseno';
+  if (value === 'correlacion') return 'correlación normalizada';
+  if (value === 'euclidiana') return 'euclidiana normalizada';
+  if (value === 'correlacion_cruzada') return 'correlación cruzada';
+  if (value === 'correlacion_cruzada_2d') return 'correlación cruzada 2D';
+  if (value === 'correlacion_2d_multiescala') return 'correlación 2D multi-escala';
+  return 'coseno';
+}
+
+function sampleEstimatorLabel(value) {
+  if (value === 'mean') return 'promedio alineado';
+  if (value === 'median') return 'mediana alineada';
+  if (value === 'medoid') return 'medoide';
+  if (value === 'consensus_ncc') return 'consenso NCC';
+  if (value === 'weighted_consensus') return 'consenso ponderado';
+  return 'consenso NCC';
+}
+
+function roiCachePart(roi) {
+  return [roi.tmin, roi.tmax, roi.fmin, roi.fmax]
+    .map(v => Number(v).toFixed(4))
+    .join(',');
+}
+
+function compoundSpecCacheKey(samples, estimator) {
+  const valid = samples.filter(isValidRoiMsg);
+  const sampleKey = valid.map(roiCachePart).join('|');
+  return [
+    estimator || 'consensus_ncc',
+    STORE.nFreq,
+    STORE.nFrames,
+    STORE.sampleRate,
+    STORE.hopLength,
+    STORE.fmin,
+    STORE.fmax,
+    sampleKey,
+  ].join('::');
+}
+
+function buildCompoundTemplateSpec(samples, estimator) {
+  const valid = samples.filter(isValidRoiMsg);
+  if (!valid.length) throw new Error('No hay muestras válidas para la plantilla compuesta.');
+  if (valid.length === 1) return buildSingleTemplateSpec(valid[0]);
+
+  const cacheKey = compoundSpecCacheKey(valid, estimator);
+  const cached = STORE.compoundTemplateCache && STORE.compoundTemplateCache.get(cacheKey);
+  if (cached) {
+    return cached;
+  }
+
+  const fmin = percentileNum(valid.map(s => Number(s.fmin)), 0.10);
+  const fmax = percentileNum(valid.map(s => Number(s.fmax)), 0.90);
+  const duration = Math.max(...valid.map(s => Math.max(0.001, Number(s.tmax) - Number(s.tmin))));
+  let iF0 = lowerBound(STORE.freqs, Math.min(fmin, fmax));
+  let iF1 = upperBound(STORE.freqs, Math.max(fmin, fmax));
+  iF0 = clampInt(iF0, 0, STORE.nFreq - 1);
+  iF1 = clampInt(iF1, iF0 + 1, STORE.nFreq);
+  const h = iF1 - iF0;
+  const w = Math.max(4, Math.round((duration * STORE.sampleRate) / STORE.hopLength));
+
+  let template;
+  let templateEmbeddings = null;
+
+  if (estimator === 'medoid') {
+    // Medoide rápido: no necesita alineación NCC completa. Escoge una muestra real
+    // representativa con embeddings 48x48, así se siente casi instantáneo y no borra detalles.
+    const rawPatches = buildCenteredSamplePatches(valid, h, w);
+    const idx = medoidIndexForPatches(rawPatches, h, w);
+    template = rawPatches[idx];
+  } else {
+    const aligned = buildAlignedSamplePatches(valid, h, w);
+    const patches = aligned.patches;
+    if (estimator === 'weighted_consensus') {
+      template = weightedConsensusPatches(patches, h, w, aligned.weights || []);
+    } else if (estimator === 'consensus_ncc') {
+      template = combinePatches(patches, h, w, 'consensus_ncc');
+    } else {
+      template = combinePatches(patches, h, w, estimator);
+    }
+  }
+
+  const ref = valid[valid.length - 1];
+  const idx = roiToIndices(ref);
+  const iT0 = idx[2];
+  const iT1 = Math.min(STORE.nFrames, iT0 + w);
+  const spec = { iF0, iF1, iT0, iT1, h, w, roiDuration: duration, template, templateEmbeddings };
+  if (STORE.compoundTemplateCache) {
+    if (STORE.compoundTemplateCache.size > 80) STORE.compoundTemplateCache.clear();
+    STORE.compoundTemplateCache.set(cacheKey, spec);
+  }
+  return spec;
+}
+
+function buildCenteredSamplePatches(valid, h, w) {
+  const patches = [];
+  for (const sample of valid) {
+    const centroid = energyCentroidForRoi(sample);
+    const startT = Math.round(centroid.tFrame - w / 2);
+    const startF = Math.round(centroid.fBin - h / 2);
+    patches.push(extractPatchPadded(startF, startF + h, startT, startT + w));
+  }
+  return patches;
+}
+
+function buildAlignedSamplePatches(valid, h, w) {
+  const initial = [];
+  for (const sample of valid) {
+    const centroid = energyCentroidForRoi(sample);
+    const cT = centroid.tFrame;
+    const cF = centroid.fBin;
+    const startT = Math.round(cT - w / 2);
+    const startF = Math.round(cF - h / 2);
+    initial.push({ startF, startT, patch: extractPatchPadded(startF, startF + h, startT, startT + w) });
+  }
+
+  // Elegimos una referencia real representativa antes de alinear: evita que una muestra rara
+  // fuerce el promedio. Luego alineamos por máxima coincidencia ponderada en una vecindad local.
+  const refIdx = medoidIndexForPatches(initial.map(x => x.patch), h, w);
+  const refPatch = initial[refIdx].patch;
+  const maxShiftF = Math.max(1, Math.min(12, Math.round(h * 0.22)));
+  const maxShiftT = Math.max(1, Math.min(18, Math.round(w * 0.22)));
+  const patches = [];
+  const weights = [];
+
+  for (let k = 0; k < initial.length; k++) {
+    const base = initial[k];
+    if (k === refIdx) {
+      patches.push(base.patch);
+      weights.push(1);
+      continue;
+    }
+    let bestPatch = base.patch;
+    let bestScore = weightedPatchSimilarity(refPatch, bestPatch, h, w);
+    for (let df = -maxShiftF; df <= maxShiftF; df++) {
+      for (let dt = -maxShiftT; dt <= maxShiftT; dt++) {
+        if (df === 0 && dt === 0) continue;
+        const cand = extractPatchPadded(base.startF + df, base.startF + df + h, base.startT + dt, base.startT + dt + w);
+        const score = weightedPatchSimilarity(refPatch, cand, h, w);
+        if (score > bestScore) {
+          bestScore = score;
+          bestPatch = cand;
+        }
+      }
+    }
+    patches.push(bestPatch);
+    weights.push(Math.max(0.05, clamp01((bestScore + 1) / 2)));
+  }
+  return { patches, refIdx, weights };
+}
+
+function weightedPatchSimilarity(a, b, h, w) {
+  const na = normalizePatch01(a);
+  const nb = normalizePatch01(b);
+  const thrA = percentileNum(Array.from(na), 0.72);
+  const thrB = percentileNum(Array.from(nb), 0.72);
+  let sumW = 0, ma = 0, mb = 0;
+  for (let i = 0; i < na.length; i++) {
+    const wa = Math.max(0, na[i] - thrA);
+    const wb = Math.max(0, nb[i] - thrB);
+    const weight = Math.max(wa, wb) + 1e-3;
+    sumW += weight;
+    ma += weight * na[i];
+    mb += weight * nb[i];
+  }
+  if (sumW <= EPS) return 0;
+  ma /= sumW; mb /= sumW;
+  let num = 0, da = 0, db = 0;
+  for (let i = 0; i < na.length; i++) {
+    const wa = Math.max(0, na[i] - thrA);
+    const wb = Math.max(0, nb[i] - thrB);
+    const weight = Math.max(wa, wb) + 1e-3;
+    const xa = na[i] - ma;
+    const xb = nb[i] - mb;
+    num += weight * xa * xb;
+    da += weight * xa * xa;
+    db += weight * xb * xb;
+  }
+  return num / (Math.sqrt(da * db) + EPS);
+}
+
+function normalizePatch01(patch) {
+  let min = Infinity, max = -Infinity;
+  for (const v of patch) { if (v < min) min = v; if (v > max) max = v; }
+  const denom = Math.max(max - min, EPS);
+  const out = new Float32Array(patch.length);
+  for (let i = 0; i < patch.length; i++) out[i] = (patch[i] - min) / denom;
+  return out;
+}
+
+function medoidIndexForPatches(patches, h, w) {
+  if (patches.length <= 1) return 0;
+  const embs = patches.map(p => patchToEmbedding(p, h, w, 48));
+  let bestIdx = 0;
+  let bestScore = -Infinity;
+  for (let i = 0; i < embs.length; i++) {
+    let sum = 0;
+    for (let j = 0; j < embs.length; j++) {
+      if (i === j) continue;
+      sum += similarity(embs[i], embs[j], 'coseno');
+    }
+    if (sum > bestScore) {
+      bestScore = sum;
+      bestIdx = i;
+    }
+  }
+  return bestIdx;
+}
+
+function energyCentroidForRoi(roi) {
+  const [iF0, iF1, iT0, iT1] = roiToIndices(roi);
+  const patch = extractPatch(iF0, iF1, iT0, iT1);
+  let vals = [];
+  const step = Math.max(1, Math.floor(patch.length / 2000));
+  for (let i = 0; i < patch.length; i += step) vals.push(patch[i]);
+  vals.sort((a, b) => a - b);
+  const thr = vals.length ? vals[Math.floor(vals.length * 0.75)] : -80;
+  const h = iF1 - iF0;
+  const w = iT1 - iT0;
+  let sumW = 0, sumT = 0, sumF = 0;
+  for (let r = 0; r < h; r++) {
+    for (let c = 0; c < w; c++) {
+      const v = patch[r * w + c];
+      const wt = Math.max(0, v - thr);
+      if (wt > 0) {
+        sumW += wt;
+        sumT += (iT0 + c) * wt;
+        sumF += (iF0 + r) * wt;
+      }
+    }
+  }
+  if (sumW <= EPS) {
+    return { tFrame: (iT0 + iT1) / 2, fBin: (iF0 + iF1) / 2 };
+  }
+  return { tFrame: sumT / sumW, fBin: sumF / sumW };
+}
+
+function extractPatchPadded(iF0, iF1, iT0, iT1) {
+  const h = iF1 - iF0;
+  const w = iT1 - iT0;
+  const patch = new Float32Array(h * w);
+  for (let r = 0; r < h; r++) {
+    const srcF = iF0 + r;
+    for (let c = 0; c < w; c++) {
+      const srcT = iT0 + c;
+      let v = -120;
+      if (srcF >= 0 && srcF < STORE.nFreq && srcT >= 0 && srcT < STORE.nFrames) {
+        v = STORE.Sdb[srcF * STORE.nFrames + srcT];
+      }
+      patch[r * w + c] = v;
+    }
+  }
+  return patch;
+}
+
+function combinePatches(patches, h, w, estimator) {
+  if (!patches.length) return new Float32Array(h * w);
+  if (patches.length === 1) return patches[0];
+  if (estimator === 'medoid') return patches[medoidIndexForPatches(patches, h, w)];
+  const out = new Float32Array(h * w);
+  for (let i = 0; i < out.length; i++) {
+    if (estimator === 'mean') {
+      let s = 0;
+      for (const p of patches) s += p[i];
+      out[i] = s / patches.length;
+    } else if (estimator === 'consensus_ncc') {
+      const vals = patches.map(p => p[i]).sort((a, b) => a - b);
+      out[i] = quantileSortedNum(vals, 0.70);
+    } else {
+      const vals = patches.map(p => p[i]).sort((a, b) => a - b);
+      const mid = Math.floor(vals.length / 2);
+      out[i] = vals.length % 2 ? vals[mid] : (vals[mid - 1] + vals[mid]) / 2;
+    }
+  }
+  return out;
+}
+
+
+function weightedConsensusPatches(patches, h, w, weights) {
+  if (!patches.length) return new Float32Array(h * w);
+  if (patches.length === 1) return patches[0];
+  const cleanWeights = patches.map((_, i) => Math.max(0.05, Number(weights[i] ?? 1)));
+  const sumW = cleanWeights.reduce((a, b) => a + b, 0) || 1;
+  const out = new Float32Array(h * w);
+  for (let i = 0; i < out.length; i++) {
+    let s = 0;
+    for (let k = 0; k < patches.length; k++) s += (cleanWeights[k] / sumW) * patches[k][i];
+    out[i] = s;
+  }
+  return out;
+}
+
+function quantileSortedNum(values, q) {
+  if (!values.length) return 0;
+  const pos = clamp(q, 0, 1) * (values.length - 1);
+  const lo = Math.floor(pos);
+  const hi = Math.min(values.length - 1, lo + 1);
+  const u = pos - lo;
+  return values[lo] * (1 - u) + values[hi] * u;
+}
+
 function roiToIndices(roi) {
   let iT0 = Math.floor((roi.tmin * STORE.sampleRate) / STORE.hopLength);
   let iT1 = Math.ceil((roi.tmax * STORE.sampleRate) / STORE.hopLength);
@@ -492,6 +869,178 @@ function patchToEmbedding(patch, h, w, outSize) {
   norm = Math.sqrt(norm) || 1;
   for (let i = 0; i < out.length; i++) out[i] /= norm;
   return out;
+}
+
+
+function patchToNccArray(patch, h, w, outSize) {
+  // Representación reducida para correlación cruzada local. Es distinta del
+  // embedding: conserva una imagen normalizada 0-1 sobre la que se prueban
+  // pequeños desplazamientos internos.
+  let min = Infinity, max = -Infinity;
+  for (let i = 0; i < patch.length; i++) {
+    const v = patch[i];
+    if (v < min) min = v;
+    if (v > max) max = v;
+  }
+  const denom = Math.max(max - min, EPS);
+  const out = new Float32Array(outSize * outSize);
+  for (let oy = 0; oy < outSize; oy++) {
+    const sy = outSize === 1 ? 0 : (oy / (outSize - 1)) * (h - 1);
+    const y0 = Math.floor(sy);
+    const y1 = Math.min(h - 1, y0 + 1);
+    const fy = sy - y0;
+    for (let ox = 0; ox < outSize; ox++) {
+      const sx = outSize === 1 ? 0 : (ox / (outSize - 1)) * (w - 1);
+      const x0 = Math.floor(sx);
+      const x1 = Math.min(w - 1, x0 + 1);
+      const fx = sx - x0;
+      const v00 = (patch[y0 * w + x0] - min) / denom;
+      const v01 = (patch[y0 * w + x1] - min) / denom;
+      const v10 = (patch[y1 * w + x0] - min) / denom;
+      const v11 = (patch[y1 * w + x1] - min) / denom;
+      const v0 = v00 * (1 - fx) + v01 * fx;
+      const v1 = v10 * (1 - fx) + v11 * fx;
+      out[oy * outSize + ox] = v0 * (1 - fy) + v1 * fy;
+    }
+  }
+  return out;
+}
+
+function temporalNccScore(templateReduced, candidatePatch, h, w, outSize) {
+  // Correlación cruzada temporal: solo permite pequeños desplazamientos horizontales.
+  const cand = patchToNccArray(candidatePatch, h, w, outSize);
+  const maxShiftT = Math.max(1, Math.min(6, Math.round(outSize * 0.14)));
+  let best = -Infinity;
+  for (let dx = -maxShiftT; dx <= maxShiftT; dx++) {
+    const ncc = weightedNccOverlap(templateReduced, cand, outSize, dx, 0);
+    const penalty = Math.exp(-0.08 * Math.abs(dx));
+    const score = ncc * penalty;
+    if (score > best) best = score;
+  }
+  // Para mantener la UI unificada, todos los métodos devuelven score 0-1.
+  // Una correlación negativa no representa similitud útil.
+  return clamp01(best);
+}
+
+function ncc2dScore(templateReduced, candidatePatch, h, w, outSize) {
+  // Correlación cruzada 2D: prueba desplazamientos pequeños en tiempo y frecuencia.
+  // El margen frecuencial es más conservador para evitar falsos positivos por desplazamientos grandes.
+  const cand = patchToNccArray(candidatePatch, h, w, outSize);
+  const maxShiftT = Math.max(1, Math.min(6, Math.round(outSize * 0.14)));
+  const maxShiftF = Math.max(1, Math.min(4, Math.round(outSize * 0.09)));
+  return ncc2dReducedScore(templateReduced, cand, outSize, maxShiftT, maxShiftF, 0.075, 0.115);
+}
+
+function ncc2dMultiScaleScore(templateReduced, candidatePatch, h, w, outSize) {
+  // Correlación 2D multi-escala: además de pequeños desplazamientos en tiempo/frecuencia,
+  // prueba deformaciones globales conservadoras de duración y ancho frecuencial.
+  // No es un warping libre: son pocas escalas controladas y penalizadas.
+  const timeScales = [0.88, 1.00, 1.12];
+  const freqScales = [0.92, 1.00, 1.08];
+  const maxShiftT = Math.max(1, Math.min(5, Math.round(outSize * 0.12)));
+  const maxShiftF = Math.max(1, Math.min(3, Math.round(outSize * 0.08)));
+  let best = -Infinity;
+  for (const st of timeScales) {
+    for (const sf of freqScales) {
+      const cand = patchToNccArrayScaled(candidatePatch, h, w, outSize, st, sf);
+      const local = ncc2dReducedScore(templateReduced, cand, outSize, maxShiftT, maxShiftF, 0.075, 0.115);
+      const scalePenalty = Math.exp(-1.25 * Math.abs(st - 1) - 1.75 * Math.abs(sf - 1));
+      const score = local * scalePenalty;
+      if (score > best) best = score;
+    }
+  }
+  return clamp01(best);
+}
+
+function ncc2dReducedScore(templateReduced, candReduced, outSize, maxShiftT, maxShiftF, penaltyT, penaltyF) {
+  let best = -Infinity;
+  for (let dy = -maxShiftF; dy <= maxShiftF; dy++) {
+    for (let dx = -maxShiftT; dx <= maxShiftT; dx++) {
+      const ncc = weightedNccOverlap(templateReduced, candReduced, outSize, dx, dy);
+      const penalty = Math.exp(-penaltyT * Math.abs(dx) - penaltyF * Math.abs(dy));
+      const score = ncc * penalty;
+      if (score > best) best = score;
+    }
+  }
+  return clamp01(best);
+}
+
+function patchToNccArrayScaled(patch, h, w, outSize, scaleT, scaleF) {
+  let min = Infinity, max = -Infinity;
+  for (let i = 0; i < patch.length; i++) {
+    const v = patch[i];
+    if (v < min) min = v;
+    if (v > max) max = v;
+  }
+  const denom = Math.max(max - min, EPS);
+  const out = new Float32Array(outSize * outSize);
+  const cxOut = (outSize - 1) / 2;
+  const cyOut = (outSize - 1) / 2;
+  const cxSrc = (w - 1) / 2;
+  const cySrc = (h - 1) / 2;
+  for (let oy = 0; oy < outSize; oy++) {
+    const baseY = outSize === 1 ? 0 : (oy / (outSize - 1)) * (h - 1);
+    let sy = cySrc + (baseY - cySrc) * scaleF;
+    sy = clamp(sy, 0, h - 1);
+    const y0 = Math.floor(sy);
+    const y1 = Math.min(h - 1, y0 + 1);
+    const fy = sy - y0;
+    for (let ox = 0; ox < outSize; ox++) {
+      const baseX = outSize === 1 ? 0 : (ox / (outSize - 1)) * (w - 1);
+      let sx = cxSrc + (baseX - cxSrc) * scaleT;
+      sx = clamp(sx, 0, w - 1);
+      const x0 = Math.floor(sx);
+      const x1 = Math.min(w - 1, x0 + 1);
+      const fx = sx - x0;
+      const v00 = (patch[y0 * w + x0] - min) / denom;
+      const v01 = (patch[y0 * w + x1] - min) / denom;
+      const v10 = (patch[y1 * w + x0] - min) / denom;
+      const v11 = (patch[y1 * w + x1] - min) / denom;
+      const v0 = v00 * (1 - fx) + v01 * fx;
+      const v1 = v10 * (1 - fx) + v11 * fx;
+      out[oy * outSize + ox] = v0 * (1 - fy) + v1 * fy;
+    }
+  }
+  return out;
+}
+
+function weightedNccOverlap(a, b, n, dx, dy) {
+  const x0a = Math.max(0, -dx);
+  const x1a = Math.min(n, n - dx);
+  const y0a = Math.max(0, -dy);
+  const y1a = Math.min(n, n - dy);
+  let sumW = 0, ma = 0, mb = 0;
+  for (let y = y0a; y < y1a; y++) {
+    const yb = y + dy;
+    for (let x = x0a; x < x1a; x++) {
+      const xb = x + dx;
+      const va = a[y * n + x];
+      const vb = b[yb * n + xb];
+      const weight = Math.max(0.03, Math.max(va - 0.55, vb - 0.55));
+      sumW += weight;
+      ma += weight * va;
+      mb += weight * vb;
+    }
+  }
+  if (sumW <= EPS) return -1;
+  ma /= sumW;
+  mb /= sumW;
+  let num = 0, da = 0, db = 0;
+  for (let y = y0a; y < y1a; y++) {
+    const yb = y + dy;
+    for (let x = x0a; x < x1a; x++) {
+      const xb = x + dx;
+      const va0 = a[y * n + x];
+      const vb0 = b[yb * n + xb];
+      const weight = Math.max(0.03, Math.max(va0 - 0.55, vb0 - 0.55));
+      const va = va0 - ma;
+      const vb = vb0 - mb;
+      num += weight * va * vb;
+      da += weight * va * va;
+      db += weight * vb * vb;
+    }
+  }
+  return num / (Math.sqrt(da * db) + EPS);
 }
 
 function similarity(a, b, metric) {

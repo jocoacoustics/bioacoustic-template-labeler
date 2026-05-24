@@ -7,7 +7,7 @@ Aplicación web pura para marcar una plantilla acústica en un espectrograma y b
 Descomprime el ZIP y sirve la carpeta con un servidor local. Por ejemplo, con Python/Conda:
 
 ```bash
-cd bioacoustic-template-labeler-wizard-v28
+cd bioacoustic-template-labeler-wizard-v8
 python -m http.server 8000
 ```
 
@@ -97,3 +97,104 @@ Los archivos CSV, XLSX y TXT Audacity se descargan usando el mismo nombre base d
 ## Cambio v19
 
 La búsqueda desde el panel Plantilla ahora procesa solo plantillas nuevas o pendientes. Si agregas plantillas después de una búsqueda, se conservan las coincidencias y parámetros ya ajustados de las plantillas anteriores. Para recalcular una plantilla existente, selecciónala en el panel Búsqueda y pulsa Buscar similares.
+
+
+## Cambios v29
+
+- Se agrega el modo **Usar varias muestras** para construir una plantilla compuesta por fonotipo.
+- El modo está desactivado por defecto y se activa desde el panel **Plantilla**.
+- Al activarlo, puedes agregar varias cajas como muestras de la misma plantilla y quitar la última muestra desde un subpanel específico.
+- Se agrega selector de **Método de plantilla** para elegir cómo construir la plantilla compuesta.
+- Para plantillas compuestas, el soporte frecuencial se estima con Q10/Q90 de las muestras y la duración se toma como la mayor duración observada.
+- Las muestras se alinean primero por centroide de energía y luego por máxima similitud ponderada en zonas salientes.
+- La búsqueda, el autoajuste, la tabla y las exportaciones siguen funcionando por plantilla/fonotipo.
+
+### Actualización v30
+
+- El modo **Usar varias muestras** queda como una opción simple de una sola línea.
+- El subpanel de muestras solo aparece cuando ese modo está activo.
+- Dentro del subpanel quedan el selector de **Estimador**, los botones **Agregar muestra** / **Quitar última muestra**, el resumen de muestras y una vista previa del soporte compuesto.
+- Se corrige la búsqueda manual desde el panel **Búsqueda**: al ajustar score o separación y volver a buscar, no se crea un fonotipo nuevo accidentalmente.
+
+### Actualización v31
+
+- El control **Usar varias muestras** queda verdaderamente compacto en una sola línea.
+- El subpanel de muestras muestra primero una vista previa de la **plantilla compuesta** que se va construyendo, no solo el soporte rectangular.
+- La vista previa se actualiza al cambiar entre **mediana** y **promedio** y al agregar o quitar muestras.
+- El estimador y los botones de muestra quedan debajo de la vista previa para mantener el flujo limpio.
+
+### Actualización v34
+
+- Se consolida la fase 1 de mejora algorítmica para **Usar varias muestras**.
+- El selector **Método de plantilla** ofrece ahora cinco métodos:
+  - **consenso NCC**: alinea las muestras por similitud ponderada y combina las zonas energéticas con un consenso robusto;
+  - **consenso ponderado**: alinea las muestras y promedia dando más peso a las que mejor se alinean con la referencia;
+  - **medoide**: usa la muestra real más representativa del conjunto;
+  - **mediana alineada**: combina las muestras alineadas por mediana píxel a píxel;
+  - **promedio alineado**: combina las muestras alineadas por promedio.
+- Se elimina el método visual ambiguo **mejor coincidencia** del constructor de plantilla; ahora todos los métodos del selector producen una plantilla visual concreta.
+- La vista previa muestra la plantilla efectiva según el método elegido. En **medoide**, muestra la muestra medoide real.
+- README y documentación explican la función de similitud ponderada $\operatorname{Sim}_w$ y los métodos de consenso.
+
+
+## Optimización de plantillas compuestas
+
+La versión v35 agrega caché para las plantillas compuestas. Cuando se usan varias muestras, la app calcula la plantilla compuesta una sola vez por combinación de muestras, método y visualización. Si se vuelve al mismo método o se relanza la búsqueda sin cambiar las muestras, se reutiliza el resultado ya calculado.
+
+Esto evita recalcular la alineación NCC, el consenso ponderado, la mediana o el medoide cada vez que se redibuja el panel o se ejecuta una búsqueda. Además, el panel de muestras muestra una barra de progreso pequeña durante la construcción de la plantilla compuesta.
+
+
+### Optimización de plantillas compuestas
+
+La versión v36 conserva en caché cada plantilla compuesta por combinación de muestras, método de plantilla y configuración visual. Si cambias entre `consenso NCC`, `consenso ponderado`, `medoide`, `mediana alineada` y `promedio alineado`, los métodos ya calculados se reutilizan sin recalcular. El caché solo se invalida cuando se agregan/quitan muestras, cambia el audio o cambia la configuración del espectrograma.
+
+El método `medoide` usa una ruta rápida basada en embeddings 48×48 para escoger la muestra real más representativa, evitando la alineación NCC completa cuando no es necesaria. La búsqueda usa la plantilla compuesta ya cacheada en el worker y no debe reconstruirla en cada ventana candidata.
+
+
+## Nota v37: caché por método de plantilla
+
+Cuando se usa **Usar varias muestras**, cada método de plantilla ya calculado queda guardado en caché para la plantilla activa. Cambiar entre consenso NCC, consenso ponderado, medoide, mediana alineada y promedio alineado reutiliza la vista previa existente si las muestras y la configuración del espectrograma no cambiaron. El caché solo se invalida al agregar/quitar muestras, cambiar audio o reconstruir el espectrograma.
+
+## Nota v38: caché persistente por método y precalentamiento del worker
+
+La versión v38 corrige la gestión de caché de plantillas compuestas. Cada plantilla conserva una caché por método (`consenso NCC`, `consenso ponderado`, `medoide`, `mediana alineada`, `promedio alineado`) mientras no cambien las muestras ni la configuración del espectrograma. Cambiar de un método ya calculado a otro y volver al anterior debe mostrar la vista previa inmediatamente.
+
+También se evita que el soporte compuesto mostrado en los campos se agregue accidentalmente como una nueva muestra al buscar coincidencias. La búsqueda reutiliza el conjunto real de muestras y precalienta la caché interna del worker para que, cuando ya se calculó una plantilla compuesta, el motor de búsqueda no tenga que reconstruirla innecesariamente.
+
+## Nota v39: método de comparación por correlación cruzada
+
+La versión v39 agrega **correlación cruzada** al selector de búsqueda, que ahora se llama **Método de comparación**. Este método aplica una NCC local sobre una representación reducida de la plantilla y de cada ventana candidata. En la opción **correlación cruzada** solo se permiten pequeños desplazamientos temporales; en la opción **correlación cruzada 2D** se permiten pequeños desplazamientos temporales y frecuenciales.
+
+La diferencia frente a la correlación normalizada es que la correlación simple compara dos patches ya alineados, mientras que la correlación cruzada permite pequeñas desalineaciones internas. Puede ser más robusta, pero también puede tardar más que coseno/correlación/euclidiana.
+
+Además, la vista previa de plantilla compuesta ahora usa el borde de color como marco externo del canvas, evitando que el borde tape píxeles importantes de la plantilla visualizada.
+
+
+## Nota v41: correlación cruzada 2D
+
+La versión v41 retira **coseno cruzado** porque no aportó mejoras consistentes y agrega **correlación cruzada 2D** como método de comparación.
+
+La comparación queda separada así:
+
+- **correlación cruzada**: prueba pequeños desplazamientos internos en tiempo.
+- **correlación cruzada 2D**: prueba pequeños desplazamientos internos en tiempo y frecuencia.
+
+Para una plantilla reducida `P` y una ventana candidata reducida `Q`, la correlación cruzada 2D evalúa:
+
+```text
+score = max NCC(P, shift(Q, Δt, Δf)) × penalización(Δt, Δf)
+```
+
+Los desplazamientos se mantienen pequeños para no volver el método demasiado permisivo. La penalización reduce el score cuando la mejor coincidencia exige mover demasiado la ventana. El score final sigue normalizado entre 0 y 1 para conservar la compatibilidad con el autoajuste de picos/islas.
+
+## Nota v42: correlación 2D multi-escala
+
+La versión v42 agrega **correlación 2D multi-escala** como método de comparación avanzado. Este método extiende la correlación cruzada 2D: además de probar pequeños desplazamientos en tiempo y frecuencia, prueba pequeñas variaciones globales de duración y escala frecuencial.
+
+No es un warping tiempo-frecuencia libre. Es una aproximación controlada: usa pocas escalas cercanas a 1 y penaliza tanto los desplazamientos como las deformaciones para evitar que el método se vuelva demasiado permisivo.
+
+```text
+score = max NCC(P, transform(Q, escala_t, escala_f, Δt, Δf)) × penalización
+```
+
+La escala del score se mantiene entre 0 y 1, por lo que sigue siendo compatible con el autoajuste de picos/islas y con el mismo control de score mínimo.

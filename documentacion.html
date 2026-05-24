@@ -244,7 +244,7 @@ python -m http.server 8000</code></pre>
         </ul>
         <h3>Búsqueda por embedding</h3>
         <ul>
-          <li><strong>Métrica:</strong> coseno, correlación normalizada o euclidiana normalizada.</li>
+          <li><strong>Método de comparación:</strong> coseno, correlación normalizada, euclidiana normalizada o correlación cruzada.</li>
           <li><strong>Score mínimo:</strong> umbral desde 0 hasta 0.99. Valores altos son más estrictos; valores bajos muestran más coincidencias, pero pueden incluir ruido.</li>
           <li><strong>Separación entre ventanas:</strong> cada cuántos segundos se prueba una nueva ventana candidata. Menor es más fino y lento; mayor es más rápido pero puede saltarse eventos.</li>
           <li><strong>Autoajuste:</strong> al buscar, estima la separación según la duración de la ROI, convierte la curva densa de scores en picos/islas temporales, excluye la plantilla original para estimar el corte y usa barandas internas para evitar tanto cientos de cajas como una sola coincidencia cuando sí existen más candidatos razonables.</li>
@@ -281,6 +281,38 @@ python -m http.server 8000</code></pre>
         <p>La duración de la plantilla es:</p>
         <p>$$T_R = t_{\max} - t_{\min}$$</p>
 
+
+
+        <h3>2b. Plantilla compuesta con varias muestras</h3>
+        <p>Opcionalmente, una plantilla puede construirse a partir de varias muestras del mismo fonotipo marcadas por el usuario:</p>
+        <p>$$\mathcal{R} = \{R_1, R_2, \dots, R_L\}$$</p>
+        <p>Cada muestra $R_l$ tiene límites $t_{\min,l}$, $t_{\max,l}$, $f_{\min,l}$ y $f_{\max,l}$. Para que una muestra extrema no agrande artificialmente la plantilla, el soporte frecuencial se define con cuantiles:</p>
+        <p>$$f_{\min}^{*} = Q_{0.10}(f_{\min,1}, \dots, f_{\min,L})$$</p>
+        <p>$$f_{\max}^{*} = Q_{0.90}(f_{\max,1}, \dots, f_{\max,L})$$</p>
+        <p>La duración común se toma como la mayor duración observada:</p>
+        <p>$$T^{*} = \max_l(t_{\max,l} - t_{\min,l})$$</p>
+        <p>Para cada muestra se extrae un patch $P_l$. Primero se calcula un centroide de energía para obtener una alineación inicial. Si $P_l[a,b]$ es el valor del patch en frecuencia discreta $a$ y tiempo discreto $b$, y $w_{a,b}^{(l)}$ es un peso de saliencia, entonces:</p>
+        <p>$$c_t^{(l)} = \frac{\sum_{a,b} b w_{a,b}^{(l)}}{\sum_{a,b} w_{a,b}^{(l)} + \varepsilon}$$</p>
+        <p>$$c_f^{(l)} = \frac{\sum_{a,b} a w_{a,b}^{(l)}}{\sum_{a,b} w_{a,b}^{(l)} + \varepsilon}$$</p>
+        <p>Luego se refina la alineación con una búsqueda local de desplazamientos. La aplicación escoge una muestra de referencia $P_{ref}$ mediante un medoide inicial y, para cada muestra, busca:</p>
+        <p>$$\Delta_l^{*} = \arg\max_{\Delta t, \Delta f} \operatorname{Sim}_w(P_{ref}, \operatorname{shift}(P_l, \Delta t, \Delta f))$$</p>
+        <p>La función $\operatorname{Sim}_w$ es una correlación ponderada. Si $A$ y $B$ son dos patches normalizados, y $w_j$ es el peso saliente del píxel $j$, se define:</p>
+        <p>$$\bar{A}_w = \frac{\sum_j w_j A_j}{\sum_j w_j + \varepsilon}, \qquad \bar{B}_w = \frac{\sum_j w_j B_j}{\sum_j w_j + \varepsilon}$$</p>
+        <p>$$\operatorname{Sim}_w(A,B) = \frac{\sum_j w_j (A_j - \bar{A}_w)(B_j - \bar{B}_w)}{\sqrt{\sum_j w_j (A_j - \bar{A}_w)^2}\sqrt{\sum_j w_j (B_j - \bar{B}_w)^2} + \varepsilon}$$</p>
+        <p>Esta ponderación busca alinear la huella espectral del canto, no el fondo acústico.</p>
+        <p>Una vez alineadas las muestras se obtienen patches $P_1^{aligned}, \dots, P_L^{aligned}$. El selector <strong>Método de plantilla</strong> construye la plantilla efectiva $P^{*}$ con una de estas opciones:</p>
+        <p><strong>Medoide:</strong> usa la muestra real más representativa del conjunto:</p>
+        <p>$$P^{*} = P_k^{aligned}, \qquad k = \arg\max_i \frac{1}{L-1}\sum_{j \neq i} \operatorname{Sim}(P_i^{aligned}, P_j^{aligned})$$</p>
+        <p><strong>Mediana alineada:</strong> combina las muestras alineadas por mediana píxel a píxel:</p>
+        <p>$$P^{*}[a,b] = \operatorname{mediana}\{P_1^{aligned}[a,b], \dots, P_L^{aligned}[a,b]\}$$</p>
+        <p><strong>Promedio alineado:</strong> promedia las muestras alineadas:</p>
+        <p>$$P^{*}[a,b] = \frac{1}{L}\sum_{l=1}^{L} P_l^{aligned}[a,b]$$</p>
+        <p><strong>Consenso NCC:</strong> usa la alineación por similitud ponderada y conserva una huella robusta mediante un percentil alto por píxel:</p>
+        <p>$$P^{*}[a,b] = Q_{0.70}(P_1^{aligned}[a,b], \dots, P_L^{aligned}[a,b])$$</p>
+        <p><strong>Consenso ponderado:</strong> promedia las muestras alineadas con pesos de calidad $\alpha_l$ derivados de la similitud de alineación:</p>
+        <p>$$P^{*}[a,b] = \frac{\sum_{l=1}^{L} \alpha_l P_l^{aligned}[a,b]}{\sum_{l=1}^{L} \alpha_l + \varepsilon}$$</p>
+        <p>En todos los casos la vista previa muestra la plantilla efectiva $P^{*}$ que se usará para construir el embedding o la representación de comparación.</p>
+
         <h3>3. Embedding del patch</h3>
         <p>Cada patch se normaliza localmente para reducir el efecto de intensidad absoluta:</p>
         <p>$$P_{\text{norm}} = \frac{P - \min(P)}{\max(P) - \min(P) + \varepsilon}$$</p>
@@ -297,13 +329,18 @@ python -m http.server 8000</code></pre>
         <p>$$t_j = j\Delta t$$</p>
         <p>Para cada ventana candidata $C_j$ se extrae un patch $P_j$, se calcula su embedding $e_j$ y se obtiene un score de similitud:</p>
         <p>$$s_j = \operatorname{score}(R, C_j)$$</p>
-        <p>La app mantiene todas las métricas en una escala común de 0 a 1, donde 1 indica mayor parecido.</p>
+        <p>La app mantiene todos los métodos de comparación en una escala común de 0 a 1, donde 1 indica mayor parecido.</p>
         <p>Para coseno y correlación normalizada se usa:</p>
         <p>$$s_j = \max(0, e_R^\top e_j)$$</p>
         <p>Para distancia euclidiana normalizada:</p>
         <p>$$d_j = \|e_R - e_j\|_2$$</p>
         <p>$$s_j = \max\left(0, 1 - \frac{d_j}{2}\right)$$</p>
         <p>Como los embeddings están normalizados, esta transformación permite interpretar también la métrica euclidiana como un score entre 0 y 1.</p>
+        <p>Los métodos de correlación cruzada comparan representaciones reducidas de la plantilla y la ventana candidata mediante correlación normalizada local. En la correlación cruzada temporal se permite un pequeño desplazamiento horizontal. En la correlación cruzada 2D se permiten desplazamientos en tiempo y frecuencia:</p>
+        <p>$$s(P,Q) = \max_{\Delta t, \Delta f} \operatorname{NCC}(P, \operatorname{shift}(Q, \Delta t, \Delta f))\, \operatorname{pen}(\Delta t, \Delta f)$$</p>
+        <p>La <strong>correlación 2D multi-escala</strong> agrega pequeñas escalas globales de tiempo y frecuencia:</p>
+        <p>$$s(P,Q) = \max_{a_t, a_f, \Delta t, \Delta f} \operatorname{NCC}(P, T_{a_t,a_f,\Delta t,\Delta f}(Q))\, \operatorname{pen}(a_t, a_f, \Delta t, \Delta f)$$</p>
+        <p>Aquí $a_t$ y $a_f$ son escalas temporales y frecuenciales cercanas a 1. La penalización evita que deformaciones o desplazamientos grandes produzcan coincidencias demasiado permisivas. Este método es más flexible, pero puede tardar más.</p>
 
         <h3>5. De ventanas a eventos</h3>
         <p>Las ventanas evaluadas no son todavía eventos finales. Muchas ventanas consecutivas pueden representar el mismo sonido. Por eso se agrupan candidatos cercanos y se conserva solo el mejor score de cada grupo temporal.</p>
@@ -382,9 +419,66 @@ python -m http.server 8000</code></pre>
 </section>
 
 <section id="v18"><h2>Actualización v18</h2><p>La tabla de resultados se ordena como <code>#</code>, <code>etiqueta</code>, <code>score</code>, <code>tmin</code>, <code>tmax</code>, <code>fmin</code>, <code>fmax</code>. Además, si se marca una plantilla válida, el botón <strong>Buscar coincidencias</strong> queda disponible y guarda automáticamente esa plantilla antes de buscar, sin exigir pulsar <strong>Agregar plantilla +</strong>. Los botones de gestión de plantilla usan colores diferenciados: rojo suave para quitar y azul para agregar.</p></section>
-<section id="v19"><h2>Actualización v19: búsqueda incremental</h2><p>Desde el panel <strong>Plantilla</strong>, el botón <strong>Buscar coincidencias</strong> procesa solo plantillas nuevas o pendientes. Las coincidencias y parámetros ya ajustados de plantillas previas se conservan. Para recalcular una plantilla existente, se selecciona en <strong>Búsqueda</strong> y se pulsa <strong>Buscar similares</strong>.</p></section></main>
+<section id="v19"><h2>Actualización v19: búsqueda incremental</h2><p>Desde el panel <strong>Plantilla</strong>, el botón <strong>Buscar coincidencias</strong> procesa solo plantillas nuevas o pendientes. Las coincidencias y parámetros ya ajustados de plantillas previas se conservan. Para recalcular una plantilla existente, se selecciona en <strong>Búsqueda</strong> y se pulsa <strong>Buscar similares</strong>.</p></section>
+<section id="v29"><h2>Actualización v29: plantillas con varias muestras</h2><p>El panel <strong>Plantilla</strong> incluye el modo <strong>Usar varias muestras</strong>. Al activarlo, se habilita un subpanel para agregar o quitar muestras dentro del mismo fonotipo. La búsqueda usa una plantilla compuesta calculada con alineación por centroide de energía y método de plantilla compuesto. En versiones recientes se usan consenso NCC, consenso ponderado, medoide, mediana alineada o promedio alineado. El resto del flujo multi-plantilla se mantiene igual: cada fonotipo conserva sus parámetros, resultados, color y exportaciones.</p></section>
+
+<section id="v30"><h2>Actualización v30: UX de varias muestras y ajuste manual</h2><p>El modo <strong>Usar varias muestras</strong> se simplifica: el panel de muestras permanece oculto hasta que se activa el casillero. Cuando está activo, muestra el selector de estimador, los botones para agregar o quitar muestras, un resumen y una vista previa del soporte compuesto usado por la plantilla. Además, se corrige el flujo de búsqueda manual para que ajustar <em>score</em> o separación entre ventanas y volver a buscar no cree plantillas nuevas accidentalmente.</p></section>
+
+<section id="v31"><h2>Actualización v31: vista previa de plantilla compuesta</h2><p>El control <strong>Usar varias muestras</strong> se presenta en una sola línea. Al activarlo, el subpanel muestra primero la vista previa de la plantilla compuesta que se está construyendo con las muestras agregadas. Esa imagen resume visualmente el resultado del estimador seleccionado, sea <strong>consenso NCC</strong>, <strong>consenso ponderado</strong>, <strong>medoide</strong>, <strong>mediana alineada</strong> o <strong>promedio alineado</strong>, y se actualiza al agregar o quitar muestras.</p></section>
+
+<section id="v34"><h2>Actualización v34: consenso NCC y consenso ponderado</h2><p>La fase 1 de mejora algorítmica reemplaza el método ambiguo de <strong>mejor coincidencia</strong> por métodos que producen una plantilla visual concreta. El selector <strong>Método de plantilla</strong> ofrece <strong>consenso NCC</strong>, <strong>consenso ponderado</strong>, <strong>medoide</strong>, <strong>mediana alineada</strong> y <strong>promedio alineado</strong>. Todas las muestras se alinean con centroide de energía y refinamiento por similitud ponderada en zonas salientes. El medoide muestra la muestra real elegida, mientras que los consensos construyen una plantilla efectiva para el embedding.</p></section>
+
+<section id="cache-v37">
+  <h2>Caché por método de plantilla</h2>
+  <p>Desde la v37, cuando se activa <strong>Usar varias muestras</strong>, la vista previa de cada método de plantilla se conserva por separado. Si las muestras no cambian, volver a un método ya calculado reutiliza la caché y no recalcula la plantilla compuesta.</p>
+  <p>La caché se invalida solamente cuando cambian las muestras, se carga otro audio o se reconstruye el espectrograma. Cambiar entre métodos de plantilla ya calculados debe ser inmediato.</p>
+</section>
+
+      <section id="v39-correlacion-cruzada">
+        <h2>Correlación cruzada local</h2>
+        <p>La versión v39 agrega un método de comparación llamado <strong>correlación cruzada</strong>. A diferencia de la correlación normalizada simple, que compara directamente la plantilla contra una ventana ya alineada, la correlación cruzada prueba pequeños desplazamientos internos en tiempo y frecuencia y conserva el mejor score.</p>
+        <p>Si $P$ es la plantilla y $Q$ una ventana candidata, la idea es:</p>
+        <p>$$s(P,Q)=\max_{\Delta t,\Delta f} \operatorname{NCC}(P, Q_{\Delta t,\Delta f}) \cdot \exp(-\lambda(|\Delta t|+|\Delta f|))$$</p>
+        <p>La función $\operatorname{NCC}$ es una correlación normalizada local. El factor exponencial penaliza desplazamientos grandes para evitar que el método se vuelva demasiado permisivo. El score final se mantiene entre 0 y 1 para conservar el mismo flujo de autoajuste.</p>
+        <p>Este método puede detectar coincidencias ligeramente desalineadas respecto a la plantilla, aunque normalmente tarda más que coseno, correlación normalizada o euclidiana.</p>
+      </section>
+
+    
+      <section id="v41-correlacion-cruzada-2d">
+        <h2>Actualización v41: correlación cruzada 2D</h2>
+        <p>La versión v41 retira <strong>coseno cruzado</strong> y agrega <strong>correlación cruzada 2D</strong>. La opción <strong>correlación cruzada</strong> conserva una tolerancia local temporal; la nueva opción <strong>correlación cruzada 2D</strong> permite tolerancias pequeñas tanto en tiempo como en frecuencia.</p>
+        <p>Para una plantilla reducida <code>P</code> y una ventana candidata reducida <code>Q</code>, se evalúan desplazamientos pequeños <code>Δt</code> y <code>Δf</code>:</p>
+        <pre><code>score = max NCC(P, shift(Q, Δt, Δf)) × penalización(Δt, Δf)</code></pre>
+        <p>La penalización evita que desplazamientos grandes produzcan coincidencias demasiado permisivas. El resultado final sigue en la escala 0–1, igual que los demás métodos de comparación, para mantener compatible el autoajuste.</p>
+      </section>
+
+    </main>
   </div>
+
+<section id="v42"><h2>Actualización v42: correlación 2D multi-escala</h2>
+  <p>La versión v42 agrega el método <strong>correlación 2D multi-escala</strong>. Este método extiende la correlación cruzada 2D: además de pequeños desplazamientos temporales y frecuenciales, prueba pequeñas variaciones globales de duración y escala frecuencial. No es un warping libre tiempo-frecuencia; es una aproximación controlada, con pocas escalas y penalización por deformación.</p>
+  <pre><code>score = max NCC(P, transform(Q, escala_t, escala_f, Δt, Δf)) × penalización</code></pre>
+</section>
+
 <section><h2>Exportación de resultados</h2><p>Los archivos CSV, XLSX y TXT Audacity se descargan usando el mismo nombre base del audio original, cambiando solo la extensión. Si el audio se llama <code>audio.mp3</code>, las exportaciones serán <code>audio.csv</code>, <code>audio.xlsx</code> y <code>audio.txt</code>.</p></section>
+
+<section id="cache-v38">
+  <h2>Actualización v38: caché persistente por método</h2>
+  <p>La caché de plantillas compuestas se guarda ahora dentro de cada plantilla y se organiza por método. Así, si ya se calculó <em>consenso NCC</em>, <em>consenso ponderado</em>, <em>medoide</em>, <em>mediana alineada</em> o <em>promedio alineado</em>, volver a ese método no recalcula la plantilla mientras las muestras no hayan cambiado.</p>
+  <p>También se evita que el soporte compuesto mostrado en los campos se agregue accidentalmente como una muestra nueva al ejecutar la búsqueda. Esto mantiene estable la firma de muestras y evita perder la caché. Además, la app precalienta la caché interna del worker de búsqueda cuando se construye una vista previa compuesta.</p>
+</section>
+
 </body>
 </html>
 
+
+<section id="optimizacion-cache">
+  <h2>Optimización y caché de plantillas compuestas</h2>
+  <p>Cuando se activa <strong>Usar varias muestras</strong>, la construcción de la plantilla compuesta puede requerir alinear varias muestras y calcular un consenso. Para evitar que la interfaz recalcule el mismo resultado una y otra vez, la app conserva en caché la plantilla compuesta asociada a la combinación de muestras, método de plantilla y configuración visual del espectrograma.</p>
+  <p>Si no cambian las muestras ni la configuración del espectrograma, cada método ya calculado permanece en caché. Cambiar de un método a otro no invalida la caché; al volver a un método previamente calculado, la vista previa debe mostrarse de inmediato. El caché solo se invalida al agregar/quitar muestras, cargar otro audio o reconstruir el espectrograma. El panel de muestras muestra una barra de progreso compacta durante la primera construcción de cada método.</p>
+</section>
+
+<h2 id="cache-plantillas-compuestas">Caché de plantillas compuestas</h2>
+<p>La aplicación conserva en memoria cada plantilla compuesta calculada para una combinación fija de muestras, método de plantilla y configuración visual. Si el usuario vuelve a un método ya calculado, la vista previa y la búsqueda reutilizan el resultado en caché. Esto evita reconstruir el consenso al cambiar entre métodos.</p>
+<p>El caché se invalida únicamente cuando cambian las muestras, el audio o la configuración del espectrograma. En particular, cambiar de <em>consenso NCC</em> a <em>medoide</em> y volver a <em>consenso NCC</em> no debería recalcular si las muestras no cambiaron.</p>
+<p>El medoide usa una ruta rápida basada en embeddings 48×48 para escoger una muestra real representativa. Los métodos de consenso siguen usando alineación, pero su resultado queda guardado.</p>
