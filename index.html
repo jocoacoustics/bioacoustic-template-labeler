@@ -3,8 +3,8 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Bioacoustic Template Labeler</title>
-  <link rel="stylesheet" href="styles.css" />
+  <title>Etiquetador bioacústico por plantillas v45.8.3</title>
+  <link rel="stylesheet" href="styles.css?v=45.8.3" />
 </head>
 <body>
   <div id="appShell" class="app-shell">
@@ -12,13 +12,13 @@
       <div class="brand">
         <img class="brand-logo" src="https://jocotoco.org.ec/dct/tmp_adjuntos/noEn/000/073/MatrizDatos_1757014841Logo-jocotoco2025.svg" alt="Logo Jocotoco" />
         <div>
-          <h1>Bioacoustic Template Labeler</h1>
-          <p>Plantillas acústicas + búsqueda por similitud de embedding en espectrogramas</p>
+          <h1>Etiquetador bioacústico por plantillas <span class="version-tag">v45.8.3</span></h1>
+          <p class="brand-subtitle">Plantillas acústicas + búsqueda por similitud + visor multirresolución</p>
         </div>
       </div>
       <div class="top-actions">
-        <button id="btnOpenAudio" class="btn btn-primary">Subir / cambiar audio</button>
-        <a class="btn btn-ghost" href="documentacion.html" target="_blank" rel="noopener">Documentación</a>
+        <button id="btnOpenAudio" class="btn btn-primary top-action-btn"><span class="ui-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M12 16V4m0 0-4 4m4-4 4 4M5 14v4a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-4"/></svg></span>Subir / cambiar audio</button>
+        <a class="btn btn-ghost top-action-btn" href="documentacion.html" target="_blank" rel="noopener"><span class="ui-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M9.8 9a2.35 2.35 0 1 1 3.66 1.95c-.93.62-1.46 1.06-1.46 2.05M12 17h.01"/></svg></span>Ayuda</a>
       </div>
     </header>
 
@@ -41,234 +41,249 @@
           </div>
         </div>
 
+        <div class="viewer-nav-toolbar" aria-label="Navegación del espectrograma">
+          <div class="nav-group">
+            <button id="btnFitAll" class="btn btn-small fit-all-btn" type="button" disabled><span class="ui-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M8 3H3v5M16 3h5v5M8 21H3v-5M16 21h5v-5"/><path d="M3 8l6-6M21 8l-6-6M3 16l6 6M21 16l-6 6"/></svg></span>Ver todo</button>
+            <button id="btnZoomOut" class="btn btn-small square-btn" type="button" disabled>−</button>
+            <button id="btnZoomIn" class="btn btn-small square-btn" type="button" disabled>+</button>
+            <label class="checkline zoom-toggle"><input id="zoomSelection" type="checkbox" /> Zoom selección</label>
+            <label class="quick-control">Escala
+              <select id="quickFreqScale">
+                <option value="linear" selected>Lineal</option>
+                <option value="mel">Mel</option>
+                <option value="log">Logarítmica</option>
+              </select>
+            </label>
+            <label class="quick-control">Paleta
+              <select id="quickColormap">
+                <option value="magma_light" selected>Magma clara</option>
+                <option value="magma_r">Magma invertida</option>
+                <option value="magma">Magma</option>
+                <option value="inferno_r">Inferno invertida</option>
+                <option value="inferno">Inferno</option>
+                <option value="plasma_r">Plasma invertida</option>
+                <option value="plasma">Plasma</option>
+                <option value="viridis_r">Viridis invertida</option>
+                <option value="viridis">Viridis</option>
+                <option value="cividis">Cividis</option>
+                <option value="turbo">Turbo</option>
+                <option value="hot">Hot</option>
+                <option value="gray">Grises</option>
+                <option value="gray_r">Grises invertidos</option>
+              </select>
+            </label>
+          </div>
+          <div class="nav-group nav-status">
+            <span>Zoom: <strong id="zoomLabel">—</strong></span>
+            <span class="nav-sep">·</span>
+            <span>Vista: <strong id="viewRangeLabel">—</strong></span>
+          </div>
+        </div>
+
         <div id="spectrogramViewport" class="spectrogram-viewport empty">
           <div id="emptyViewer" class="empty-viewer">
             <div class="empty-icon">♪</div>
             <p>El espectrograma aparecerá aquí.</p>
           </div>
           <div id="spectrogramStage" class="spectrogram-stage" hidden>
+            <div class="axis-corner-label">Tiempo (s)</div>
+            <div class="time-axis-name">Frecuencia (kHz)</div>
+            <canvas id="timeAxisCanvas" class="time-axis"></canvas>
             <canvas id="freqAxisCanvas" class="freq-axis"></canvas>
             <div id="canvasLayer" class="canvas-layer">
               <canvas id="spectrogramCanvas"></canvas>
               <canvas id="overlayCanvas"></canvas>
+              <div id="zoomRect" class="zoom-rect"></div>
               <div id="playhead"></div>
             </div>
-            <canvas id="timeAxisCanvas" class="time-axis"></canvas>
+            <div id="playheadAxisLabel" class="playhead-axis-label" hidden>0.00 s</div>
           </div>
         </div>
 
         <div class="spectrogram-player">
-          <audio id="audioPlayer" controls preload="metadata"></audio>
+          <audio id="audioPlayer" preload="auto" hidden></audio>
+          <div class="custom-player" aria-label="Reproductor de audio">
+            <button id="btnPlayPause" class="player-main-btn" type="button" aria-label="Reproducir"><span class="play-glyph">▶</span></button>
+            <button id="btnBackOne" class="player-icon-btn player-skip" type="button" aria-label="Retroceder un segundo"><span>−1s</span></button>
+            <button id="btnForwardOne" class="player-icon-btn player-skip" type="button" aria-label="Avanzar un segundo"><span>+1s</span></button>
+            <span id="playerTime" class="player-time">0:00 / 0:00</span>
+            <input id="playerSeek" class="player-seek" type="range" min="0" max="1" step="0.01" value="0" aria-label="Posición del audio" />
+            <button id="btnMute" class="player-icon-btn" type="button" aria-label="Silenciar"><span class="ui-icon"><svg viewBox="0 0 24 24"><path d="M11 5 6.5 9H3v6h3.5L11 19V5Z"/><path d="M15 9.5a4 4 0 0 1 0 5M17.5 7a7.5 7.5 0 0 1 0 10"/></svg></span></button>
+            <select id="playbackRate" class="player-rate" aria-label="Velocidad de reproducción">
+              <option value="0.5">0.5×</option><option value="0.75">0.75×</option><option value="1" selected>1×</option><option value="1.25">1.25×</option><option value="1.5">1.5×</option><option value="2">2×</option>
+            </select>
+          </div>
         </div>
+        <canvas id="analyticCanvas" hidden aria-hidden="true"></canvas>
       </section>
 
+      <div id="sidePanelResizer" class="side-panel-resizer" role="separator" aria-orientation="vertical" aria-label="Ajustar ancho del panel lateral" title="Arrastra para ajustar el ancho del panel"></div>
+
       <aside class="side-panel" aria-label="Panel de configuración">
-        <section class="coach-card accordion-panel is-open" data-panel="guide">
-          <button class="accordion-head" type="button" aria-expanded="true">
-            <span class="section-title">Guía</span>
-            <span class="accordion-icon">▴</span>
+        <section class="coach-card accordion-panel is-collapsed" data-panel="guide">
+          <button class="accordion-head" type="button" aria-expanded="false">
+            <span class="section-title"><span class="section-icon icon-guide" aria-hidden="true"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 10v6M12 7h.01"/></svg></span>Guía</span>
+            <span class="accordion-icon">▾</span>
           </button>
-          <div class="accordion-content">
-            <div id="coachTitle" class="coach-title">Sube un audio</div>
-            <p id="coachText" class="coach-text">Apenas selecciones el archivo, la app decodifica el audio y construye el espectrograma automáticamente.</p>
+          <div class="accordion-content guide-content">
+            <div class="guide-current-status">
+              <span class="guide-status-dot"></span>
+              <div><strong id="coachTitle" class="coach-title">Sube un audio</strong><p id="coachText" class="coach-text">Apenas selecciones el archivo, la app decodifica el audio y construye el espectrograma automáticamente.</p></div>
+            </div>
+            <p class="guide-intro">Sigue estos pasos para etiquetar y encontrar coincidencias en el espectrograma.</p>
+            <div class="guide-steps">
+              <div class="guide-step"><span class="guide-step-number">1</span><span class="guide-step-icon"><svg viewBox="0 0 24 24"><path d="M3 12h2l1.5-5 2 10 2-13 2 16 2-11 2 7 1.5-4H21"/><circle cx="18" cy="17" r="4"/><path d="m17 15 3 2-3 2z"/></svg></span><div><strong>Reproduce o navega el audio</strong><span>Usa el reproductor y el visor para localizar el sonido.</span></div></div>
+              <div class="guide-step"><span class="guide-step-number step-purple">2</span><span class="guide-step-icon purple"><svg viewBox="0 0 24 24"><path d="M4 7h16v10H4z"/><path d="M8 4v3M16 4v3M8 17v3M16 17v3"/><path d="M7 13c2-5 3 4 5-2s3 5 5-1"/></svg></span><div><strong>Marca una plantilla</strong><span>Arrastra una caja sobre el patrón acústico de interés.</span></div></div>
+              <div class="guide-step"><span class="guide-step-number step-violet">3</span><span class="guide-step-icon violet"><svg viewBox="0 0 24 24"><rect x="5" y="4" width="14" height="4" rx="1"/><rect x="5" y="10" width="14" height="4" rx="1"/><rect x="5" y="16" width="9" height="4" rx="1"/><path d="M18 15v6M15 18h6"/></svg></span><div><strong>Ajusta o agrega muestras</strong><span>Refina límites o añade muestras del mismo fonotipo.</span></div></div>
+              <div class="guide-step"><span class="guide-step-number step-blue">4</span><span class="guide-step-icon blue"><svg viewBox="0 0 24 24"><circle cx="10" cy="10" r="6"/><path d="m14.5 14.5 5 5M7 10h1l1-3 2 6 1-4 2 2"/></svg></span><div><strong>Busca y revisa resultados</strong><span>Ejecuta la búsqueda, revisa cajas y valida la tabla.</span></div></div>
+            </div>
+            <div class="guide-tip"><span class="guide-tip-icon"><svg viewBox="0 0 24 24"><path d="M9 18h6M10 22h4M8.5 15.5C6.9 14.4 6 12.7 6 10.5a6 6 0 1 1 12 0c0 2.2-.9 3.9-2.5 5L14.5 17h-5z"/></svg></span><div><strong>Consejo</strong><span>En móvil puedes marcar plantillas directamente con el dedo; gira el dispositivo si necesitas más precisión.</span></div></div>
           </div>
         </section>
 
         <section class="panel-card accordion-panel is-collapsed" data-panel="spectrogram-config">
           <button class="accordion-head" type="button" aria-expanded="false">
-            <span class="section-title">Configuración del espectrograma</span>
+            <span class="section-title"><span class="section-icon icon-config" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M4 7h10M18 7h2M4 17h2M10 17h10M14 4v6M7 14v6"/></svg></span>Configuración del espectrograma</span>
             <span class="accordion-icon">▾</span>
           </button>
-          <div class="accordion-content">
-            <label class="control-label">Escala de frecuencia
-              <select id="freqScaleSelect">
-                <option value="linear" selected>lineal</option>
-                <option value="mel">mel</option>
-              </select>
-            </label>
-            <label class="control-label">Color
-              <select id="colormapSelect">
-                <option value="magma" selected>magma</option>
-                <option value="gray">blanco y negro</option>
-              </select>
-            </label>
-            <div class="mini-summary">Al cambiar estos controles, solo se redibuja la visualización; no hace falta volver a subir el audio.</div>
+          <div class="accordion-content config-content">
+            <div class="config-top-grid">
+              <div class="config-field-card">
+                <span class="config-field-icon blue"><svg viewBox="0 0 24 24"><path d="M3 12h3l2-7 3 14 3-10 2 6 2-3h3"/></svg></span>
+                <label class="control-label">Escala de frecuencia
+                  <select id="freqScaleSelect"><option value="linear" selected>Lineal</option><option value="mel">Mel</option><option value="log">Logarítmica</option></select>
+                </label>
+              </div>
+              <div class="config-field-card palette-field-card">
+                <span class="config-field-icon purple"><svg viewBox="0 0 24 24"><path d="M12 3a9 9 0 0 0 0 18h1.5a2.5 2.5 0 0 0 0-5H12a1.5 1.5 0 0 1 0-3h3a6 6 0 0 0 6-6c0-2.2-3.7-4-9-4Z"/><circle cx="7.5" cy="9" r="1"/><circle cx="10" cy="6.5" r="1"/><circle cx="14" cy="6.5" r="1"/></svg></span>
+                <label class="control-label">Paleta
+                  <select id="colormapSelect" class="native-select-hidden" aria-hidden="true" tabindex="-1">
+                    <option value="magma_light" selected>Magma clara</option><option value="magma_r">Magma invertida</option><option value="magma">Magma</option><option value="inferno_r">Inferno invertida</option><option value="inferno">Inferno</option><option value="plasma_r">Plasma invertida</option><option value="plasma">Plasma</option><option value="viridis_r">Viridis invertida</option><option value="viridis">Viridis</option><option value="cividis">Cividis</option><option value="turbo">Turbo</option><option value="hot">Hot</option><option value="gray">Grises</option><option value="gray_r">Grises invertidos</option>
+                  </select>
+                  <div class="palette-picker" id="palettePicker">
+                    <button id="palettePickerButton" class="palette-picker-button" type="button" aria-haspopup="listbox" aria-expanded="false"><span id="palettePickerSwatch" class="palette-swatch palette-magma-light"></span><span id="palettePickerLabel">Magma clara</span><span class="palette-chevron">⌄</span></button>
+                    <div id="palettePickerMenu" class="palette-picker-menu" role="listbox" hidden>
+                      <button type="button" data-palette="magma_light"><span class="palette-swatch palette-magma-light"></span>Magma clara</button>
+                      <button type="button" data-palette="magma_r"><span class="palette-swatch palette-magma-r"></span>Magma invertida</button>
+                      <button type="button" data-palette="magma"><span class="palette-swatch palette-magma"></span>Magma</button>
+                      <button type="button" data-palette="inferno_r"><span class="palette-swatch palette-inferno-r"></span>Inferno invertida</button>
+                      <button type="button" data-palette="inferno"><span class="palette-swatch palette-inferno"></span>Inferno</button>
+                      <button type="button" data-palette="plasma_r"><span class="palette-swatch palette-plasma-r"></span>Plasma invertida</button>
+                      <button type="button" data-palette="plasma"><span class="palette-swatch palette-plasma"></span>Plasma</button>
+                      <button type="button" data-palette="viridis_r"><span class="palette-swatch palette-viridis-r"></span>Viridis invertida</button>
+                      <button type="button" data-palette="viridis"><span class="palette-swatch palette-viridis"></span>Viridis</button>
+                      <button type="button" data-palette="cividis"><span class="palette-swatch palette-cividis"></span>Cividis</button>
+                      <button type="button" data-palette="turbo"><span class="palette-swatch palette-turbo"></span>Turbo</button>
+                      <button type="button" data-palette="hot"><span class="palette-swatch palette-hot"></span>Hot</button>
+                      <button type="button" data-palette="gray"><span class="palette-swatch palette-gray"></span>Grises</button>
+                      <button type="button" data-palette="gray_r"><span class="palette-swatch palette-gray-r"></span>Grises invertidos</button>
+                    </div>
+                  </div>
+                </label>
+              </div>
+            </div>
+
+            <div class="config-group-title"><span>Ajustes visuales</span></div>
+            <div class="config-slider-list">
+              <label class="config-slider-row"><span class="config-row-icon contrast"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="7"/><path d="M12 5a7 7 0 0 0 0 14z" fill="currentColor" stroke="none"/></svg></span><span class="config-row-name">Contraste</span><input id="contrastRange" type="range" min="0.55" max="2.80" step="0.01" value="1.00" /><output id="contrastValue" class="config-value-pill">1.00</output></label>
+              <label class="config-slider-row"><span class="config-row-icon brightness"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M2 12h2M20 12h2M5 5l1.5 1.5M17.5 17.5 19 19M19 5l-1.5 1.5M6.5 17.5 5 19"/></svg></span><span class="config-row-name">Brillo</span><input id="brightnessRange" type="range" min="-0.45" max="0.45" step="0.01" value="0.00" /><output id="brightnessValue" class="config-value-pill">0.00</output></label>
+              <label class="config-slider-row"><span class="config-row-icon gamma"><svg viewBox="0 0 24 24"><path d="M4 19V5M4 19h16"/><path d="M6 16c3-1 4-3 6-6s4-4 7-5"/></svg></span><span class="config-row-name">Gamma</span><input id="gammaRange" type="range" min="0.35" max="2.20" step="0.01" value="1.00" /><output id="gammaValue" class="config-value-pill">1.00</output></label>
+            </div>
+
+            <div class="config-group-title"><span>Opciones de vista</span></div>
+            <div class="config-top-grid config-secondary-grid">
+              <div class="config-field-card"><span class="config-field-icon blue"><svg viewBox="0 0 24 24"><path d="M3 12h3l2-6 2 12 2-10 2 8 2-4h5"/><path d="M4 20h16"/></svg></span><label class="control-label">FFT visual<select id="visualFftSelect"><option value="auto" selected>Auto</option><option value="1024">1024</option><option value="2048">2048</option><option value="4096">4096</option><option value="8192">8192</option></select></label></div>
+              <div class="config-field-card"><span class="config-field-icon purple"><svg viewBox="0 0 24 24"><circle cx="10" cy="10" r="6"/><path d="m14.5 14.5 5 5M10 6v4l3 2"/></svg></span><label class="control-label">Detalle temporal<select id="visualQualitySelect"><option value="rapida">Rápido</option><option value="media">Medio</option><option value="alta" selected>Alto</option><option value="ultra">Ultra</option></select></label></div>
+            </div>
+
+            <div class="config-group-title"><span>Tamaño y zoom</span></div>
+            <div class="config-size-list">
+              <label class="config-size-row"><span class="config-row-icon size"><svg viewBox="0 0 24 24"><path d="m12 3-4 4M12 3l4 4M12 21l-4-4M12 21l4-4M12 4v16"/></svg></span><span><strong>Altura</strong><small id="visualHeightValue">520 px</small></span><input id="visualHeightRange" type="range" min="300" max="760" step="10" value="520" /></label>
+              <label class="config-size-row"><span class="config-row-icon zoom"><svg viewBox="0 0 24 24"><circle cx="10" cy="10" r="6"/><path d="m14.5 14.5 5 5M7 10h6M10 7v6"/></svg></span><span><strong>Zoom temporal</strong><small id="pxPerSecValue">—</small></span><input id="pxPerSecRange" type="range" min="0.1" max="300" step="0.1" value="55" /></label>
+            </div>
+
+            <button id="btnResetVisual" class="btn config-reset-btn" type="button"><span class="ui-icon"><svg viewBox="0 0 24 24"><path d="M20 11a8 8 0 1 0-2.3 5.7M20 5v6h-6"/></svg></span>Restablecer visualización</button>
+            <div class="config-info-box"><span class="config-info-icon"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 10v6M12 7h.01"/></svg></span><p><strong>Visualización independiente.</strong> Paleta, brillo, contraste, gamma, escalas Lineal/Mel/Logarítmica, FFT visual y zoom no modifican las plantillas ni los resultados analíticos. Mel y Logarítmica son escalas de visualización, no transformaciones del motor analítico.</p></div>
           </div>
         </section>
 
         <section class="panel-card accordion-panel is-collapsed" data-panel="roi">
           <button class="accordion-head" type="button" aria-expanded="false">
-            <span class="section-title">Plantilla</span>
-            <span class="accordion-icon">▾</span>
+            <span class="section-title"><span class="section-icon icon-template" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M3 12h2l2-7 3 14 3-10 2 6 2-3h4"/></svg></span>Plantilla</span><span class="accordion-icon">▾</span>
           </button>
-          <div class="accordion-content">
-            <div id="templateChips" class="template-chips" aria-label="Plantillas"></div>
-            <div class="field-grid">
-              <label class="full-row">Etiqueta (opcional)
-                <input id="roiLabel" class="roi-label-input" type="text" placeholder="Ej. especie, código o clase" />
-              </label>
-              <label class="checkline compound-check full-row">
-                <input id="useMultiSamples" type="checkbox" />
-                <span>Usar varias muestras</span>
-                <button type="button" class="info-dot" data-tip="Permite marcar varias muestras del mismo fonotipo. La app estima un soporte robusto con Q10/Q90, alinea las muestras por máxima similitud sobre zonas salientes y permite construir una plantilla por medoide, mediana alineada, promedio alineado, consenso NCC o consenso ponderado.">i</button>
-              </label>
-              <div id="samplePanel" class="sample-panel full-row is-hidden">
-                <canvas id="samplePreviewCanvas" class="sample-preview" width="360" height="120" aria-label="Vista de la plantilla compuesta"></canvas>
-                <label class="compact-estimator">Método de plantilla
-                  <select id="sampleEstimator">
-                    <option value="consensus_ncc" selected>consenso NCC</option>
-                    <option value="weighted_consensus">consenso ponderado</option>
-                    <option value="medoid">medoide</option>
-                    <option value="median">mediana alineada</option>
-                    <option value="mean">promedio alineado</option>
-                  </select>
-                </label>
-                <div class="button-row sample-actions">
-                  <button id="btnRemoveSample" class="btn btn-ghost btn-small" disabled>Quitar última muestra</button>
-                  <button id="btnAddSample" class="btn btn-primary btn-small" disabled>Agregar muestra</button>
+          <div class="accordion-content template-content">
+            <div class="template-selected-label">Fonotipo seleccionado</div>
+            <div class="template-chip-nav">
+              <button id="btnPrevTemplate" class="carousel-btn chip-nav-arrow" type="button" aria-label="Plantilla anterior">‹</button><div id="templateChips" class="template-chips" aria-label="Plantillas"></div><button id="btnNextTemplate" class="carousel-btn chip-nav-arrow" type="button" aria-label="Plantilla siguiente">›</button>
+            </div>
+            <div id="templatePager" class="template-pager template-pager-top">Sin plantillas</div>
+
+            <div class="template-editor-grid">
+              <div class="template-fields-card">
+                <div class="template-subtitle">Definición de la plantilla</div>
+                <label class="template-label-field">Etiqueta<input id="roiLabel" class="roi-label-input" type="text" placeholder="Ej. especie, código o clase" /></label>
+                <div class="template-roi-grid">
+                  <label>tmin (s)<input id="roiTmin" type="number" step="0.001" value="0" /></label><label>tmax (s)<input id="roiTmax" type="number" step="0.001" value="0" /></label><label>fmin (kHz)<input id="roiFmin" type="number" step="0.001" value="0" /></label><label>fmax (kHz)<input id="roiFmax" type="number" step="0.001" value="0" /></label>
                 </div>
-                <div id="sampleProgress" class="sample-progress is-hidden">
-                  <div class="sample-progress-track"><div class="sample-progress-bar"></div></div>
-                  <div class="sample-progress-text">Plantilla compuesta lista.</div>
-                </div>
-                <div id="sampleSummary" class="mini-summary">Marca una caja y pulsa Agregar muestra.</div>
+                <label class="checkline compound-check template-multi-check"><input id="useMultiSamples" type="checkbox" /><span>Usar varias muestras</span><button type="button" class="info-dot" data-tip="Permite combinar varias muestras del mismo fonotipo. La app alinea las muestras y construye una plantilla compuesta robusta.">i</button></label>
               </div>
-              <label>tmin <input id="roiTmin" type="number" step="0.001" value="0" /></label>
-              <label>tmax <input id="roiTmax" type="number" step="0.001" value="0" /></label>
-              <label>fmin <input id="roiFmin" type="number" step="1" value="0" /></label>
-              <label>fmax <input id="roiFmax" type="number" step="1" value="0" /></label>
+              <div class="template-preview-card-main">
+                <div class="sample-preview-title">Vista previa de la plantilla</div>
+                <canvas id="samplePreviewCanvas" class="sample-preview" width="420" height="150" aria-label="Vista previa de la plantilla efectiva"></canvas>
+                <div id="sampleProgress" class="sample-progress is-hidden"><div class="sample-progress-track"><div class="sample-progress-bar"></div></div><div class="sample-progress-text">Plantilla compuesta lista.</div></div>
+                <div id="samplePreviewMeta" class="sample-preview-meta">Dibuja una plantilla para ver su vista previa</div>
+              </div>
             </div>
+
+            <div id="samplePanel" class="sample-panel template-sample-panel is-hidden">
+              <div class="sample-panel-head"><span class="sample-panel-title"><span class="sample-panel-icon"><svg viewBox="0 0 24 24"><circle cx="8" cy="8" r="3"/><circle cx="16" cy="8" r="3"/><circle cx="12" cy="16" r="3"/><path d="M10.5 10.5 11 13M13.5 10.5 13 13"/></svg></span>Muestras de la plantilla</span><span id="sampleCountBadge" class="sample-count-badge">0</span></div>
+              <label class="compact-estimator"><span>Método de plantilla</span><select id="sampleEstimator"><option value="consensus_ncc" selected>consenso NCC</option><option value="weighted_consensus">consenso ponderado</option><option value="medoid">medoide</option><option value="median">mediana alineada</option><option value="mean">promedio alineado</option></select></label>
+              <div class="button-row sample-actions">
+                <button id="btnRemoveSample" class="btn btn-sample-secondary btn-small" disabled><span class="ui-icon"><svg viewBox="0 0 24 24"><path d="M5 12h14M7 5h10v14H7z"/></svg></span>Quitar última</button>
+                <button id="btnAddSample" class="btn btn-sample-primary btn-small" disabled><span class="ui-icon"><svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg></span>Agregar muestra</button>
+              </div>
+              <div id="sampleSummary" class="sample-summary compact-status-line">Marca una caja y pulsa Agregar muestra.</div>
+            </div>
+
             <div class="button-row template-main-actions">
-              <button id="btnRemoveTemplate" class="btn btn-danger btn-small" disabled>Quitar plantilla −</button>
-              <button id="btnAddTemplate" class="btn btn-primary btn-small" disabled>Agregar plantilla +</button>
+              <button id="btnRemoveTemplate" class="btn btn-danger btn-small" disabled><span class="ui-icon"><svg viewBox="0 0 24 24"><path d="M4 7h16M9 7V4h6v3M7 7l1 13h8l1-13M10 11v5M14 11v5"/></svg></span>Quitar plantilla</button>
+              <button id="btnAddTemplate" class="btn btn-primary btn-small" disabled><span class="ui-icon"><svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg></span>Agregar plantilla</button>
             </div>
-            <button id="btnSearchAllTemplates" class="btn btn-success search-all-btn" disabled>Buscar coincidencias</button>
+            <button id="btnSearchAllTemplates" class="btn btn-success search-all-btn" disabled><span class="ui-icon"><svg viewBox="0 0 24 24"><circle cx="10.5" cy="10.5" r="6.5"/><path d="m15.5 15.5 5 5"/></svg></span>Buscar coincidencias</button>
             <div id="roiSummary" class="mini-summary">Sin plantilla.</div>
-            <div class="template-carousel template-carousel-bottom">
-              <button id="btnPrevTemplate" class="carousel-btn" type="button" aria-label="Plantilla anterior">‹</button>
-              <div id="templatePager" class="template-pager">Sin plantillas</div>
-              <button id="btnNextTemplate" class="carousel-btn" type="button" aria-label="Plantilla siguiente">›</button>
-            </div>
           </div>
         </section>
 
         <section class="panel-card accordion-panel is-collapsed" data-panel="search">
           <button class="accordion-head" type="button" aria-expanded="false">
-            <span class="section-title">Búsqueda</span>
+            <span class="section-title"><span class="section-icon icon-search" aria-hidden="true"><svg viewBox="0 0 24 24"><circle cx="10.5" cy="10.5" r="6.5"/><path d="m15.5 15.5 5 5"/></svg></span>Búsqueda</span>
             <span class="accordion-icon">▾</span>
           </button>
-          <div class="accordion-content">
-            <div id="searchTemplateChips" class="template-chips search-template-chips" aria-label="Plantillas para búsqueda"></div>
-            <label class="control-label"><span class="label-row">Método de comparación <button type="button" class="info-dot" data-tip="Define cómo se compara la plantilla con cada ventana candidata. Coseno/correlación/euclidiana usan el embedding 48×48; correlación cruzada permite tolerancia temporal, correlación cruzada 2D permite tolerancia temporal y frecuencial, y correlación 2D multi-escala prueba pequeñas variaciones globales de duración y frecuencia. Estos métodos pueden tardar más.">i</button></span>
-              <select id="metricSelect">
-                <option value="coseno" selected>coseno</option>
-                <option value="correlacion">correlación normalizada</option>
-                <option value="euclidiana">euclidiana normalizada</option>
-                <option value="correlacion_cruzada">correlación cruzada</option>
-                <option value="correlacion_cruzada_2d">correlación cruzada 2D</option>
-                <option value="correlacion_2d_multiescala">correlación 2D multi-escala</option>
-              </select>
-            </label>
-            <label class="control-label"><span class="label-row">Score mínimo <button type="button" class="info-dot" data-tip="Umbral de similitud entre 0 y 1. Más alto = menos coincidencias, más estrictas. Más bajo = más coincidencias, pero puede incluir ruido.">i</button></span>
-              <div class="slider-number-row">
-                <input id="scoreThreshold" type="range" min="0" max="0.99" step="0.001" value="0.85" />
-                <input id="scoreThresholdInput" class="number-compact" type="number" min="0" max="0.99" step="0.001" value="0.85" />
-              </div>
-            </label>
-            <label class="control-label"><span class="label-row">Separación entre ventanas (s) <button type="button" class="info-dot" data-tip="Cada cuántos segundos se prueba una nueva ventana. Menor = búsqueda más fina y lenta. Mayor = búsqueda más rápida, pero puede saltarse eventos cortos.">i</button></span>
-              <div class="slider-number-row">
-                <input id="strideSec" type="range" min="0.01" max="1.00" step="0.01" value="0.10" />
-                <input id="strideSecInput" class="number-compact" type="number" min="0.01" max="1.00" step="0.01" value="0.10" />
-              </div>
-            </label>
-            <label class="control-label"><span class="label-row">Autoajuste <button type="button" class="info-dot" data-tip="Ninguno usa tus valores manuales. Conservador prioriza pocas coincidencias de alta confianza. Balanceado es el recomendado para la primera búsqueda. Sensible acepta más candidatos si hay picos prominentes.">i</button></span>
-              <select id="autoAdjustMode">
-                <option value="none">Ninguno</option>
-                <option value="conservador">Conservador</option>
-                <option value="balanceado" selected>Balanceado</option>
-                <option value="sensible">Sensible</option>
-              </select>
-            </label>
-            <div class="check-grid-row">
-              <label class="checkline auto-adjust-row compact-check">
-                <input id="expertMode" type="checkbox" />
-                Modo experto
-                <button type="button" class="info-dot" data-tip="Muestra parámetros técnicos del autoajuste. Déjalo apagado para uso normal.">i</button>
-              </label>
-              <label class="checkline auto-adjust-row compact-check">
-                <input id="showActiveMatches" type="checkbox" checked />
-                Ver cajas
-                <button type="button" class="info-dot" data-tip="Muestra u oculta en el espectrograma las cajas inferidas de la plantilla activa. No borra resultados ni afecta exportaciones.">i</button>
-              </label>
+          <div class="accordion-content search-content">
+            <div class="search-chip-nav"><button id="btnPrevSearchTemplate" class="carousel-btn" type="button" aria-label="Plantilla anterior">‹</button><div id="searchTemplateChips" class="template-chips search-template-chips" aria-label="Plantillas para búsqueda"></div><button id="btnNextSearchTemplate" class="carousel-btn" type="button" aria-label="Plantilla siguiente">›</button></div>
+            <div id="searchTemplatePager" class="template-pager">Sin plantillas</div>
+            <label class="control-label search-full-field"><span class="label-row">Método de comparación <button type="button" class="info-dot" data-tip="Define cómo se compara la plantilla con cada ventana candidata.">i</button></span><select id="metricSelect"><option value="coseno" selected>coseno</option><option value="correlacion">correlación normalizada</option><option value="euclidiana">euclidiana normalizada</option><option value="correlacion_cruzada">correlación cruzada</option><option value="correlacion_cruzada_2d">correlación cruzada 2D</option><option value="correlacion_2d_multiescala">correlación 2D multi-escala</option></select></label>
+            <div class="auto-adjust-block"><div class="label-row">Autoajuste <button type="button" class="info-dot" data-tip="Ninguno usa tus valores manuales. Balanceado es el recomendado para la primera búsqueda.">i</button></div><select id="autoAdjustMode" class="native-select-hidden"><option value="none">Ninguno</option><option value="conservador">Conservador</option><option value="balanceado" selected>Balanceado</option><option value="sensible">Sensible</option></select><div id="autoAdjustSegments" class="auto-adjust-segments" role="radiogroup" aria-label="Autoajuste"><button type="button" data-auto-mode="none">Ninguno</button><button type="button" data-auto-mode="conservador">Conservador</button><button type="button" data-auto-mode="balanceado" class="active">Balanceado</button><button type="button" data-auto-mode="sensible">Sensible</button></div></div>
+            <div class="search-control-grid">
+              <div class="search-cell"><label class="control-label"><span class="label-row">Score mínimo <button type="button" class="info-dot" data-tip="Umbral de similitud entre 0 y 1.">i</button></span><div class="slider-number-row"><input id="scoreThreshold" type="range" min="0" max="0.99" step="0.001" value="0.85" /><input id="scoreThresholdInput" class="number-compact" type="number" min="0" max="0.99" step="0.001" value="0.85" /></div></label></div>
+              <div class="search-cell"><label class="control-label"><span class="label-row">Separación entre ventanas <button type="button" class="info-dot" data-tip="Cada cuántos segundos se prueba una nueva ventana.">i</button></span><div class="slider-number-row"><input id="strideSec" type="range" min="0.01" max="1.00" step="0.01" value="0.10" /><input id="strideSecInput" class="number-compact" type="number" min="0.01" max="1.00" step="0.01" value="0.10" /></div></label></div>
             </div>
-            <div id="expertPanel" class="expert-panel is-hidden">
-              <label class="control-label compact-control"><span class="label-row">Mínimo objetivo</span>
-                <div class="slider-number-row">
-                  <input id="expertMinMatches" type="range" min="1" max="20" step="1" value="3" />
-                  <input id="expertMinMatchesInput" class="number-compact" type="number" min="1" max="20" step="1" value="3" />
-                </div>
-              </label>
-              <label class="control-label compact-control"><span class="label-row">Máximo automático</span>
-                <div class="slider-number-row">
-                  <input id="expertMaxMatches" type="range" min="5" max="200" step="1" value="30" />
-                  <input id="expertMaxMatchesInput" class="number-compact" type="number" min="5" max="200" step="1" value="30" />
-                </div>
-              </label>
-              <label class="control-label compact-control"><span class="label-row">Prominencia mínima</span>
-                <div class="slider-number-row">
-                  <input id="expertProminence" type="range" min="0" max="0.40" step="0.005" value="0.035" />
-                  <input id="expertProminenceInput" class="number-compact" type="number" min="0" max="0.40" step="0.005" value="0.035" />
-                </div>
-              </label>
-              <label class="control-label compact-control"><span class="label-row">Agrupamiento temporal</span>
-                <div class="slider-number-row">
-                  <input id="expertGroupFactor" type="range" min="0.40" max="2.00" step="0.05" value="1.00" />
-                  <input id="expertGroupFactorInput" class="number-compact" type="number" min="0.40" max="2.00" step="0.05" value="1.00" />
-                </div>
-              </label>
-            </div>
-            <div class="button-row">
-              <button id="btnSearch" class="btn btn-success" disabled>Buscar similares</button>
-              <button id="btnClearMatches" class="btn btn-ghost" disabled>Limpiar</button>
-            </div>
-            <div id="matchSummary" class="mini-summary">Sin coincidencias.</div>
-            <div class="template-carousel search-carousel-bottom">
-              <button id="btnPrevSearchTemplate" class="carousel-btn" type="button" aria-label="Plantilla anterior">‹</button>
-              <div id="searchTemplatePager" class="template-pager">Sin plantillas</div>
-              <button id="btnNextSearchTemplate" class="carousel-btn" type="button" aria-label="Plantilla siguiente">›</button>
-            </div>
+            <div class="check-grid-row"><label class="checkline auto-adjust-row compact-check"><input id="expertMode" type="checkbox" />Modo experto<button type="button" class="info-dot" data-tip="Muestra parámetros técnicos del autoajuste.">i</button></label><label class="checkline auto-adjust-row compact-check"><input id="showActiveMatches" type="checkbox" checked />Ver cajas<button type="button" class="info-dot" data-tip="Muestra u oculta las cajas inferidas de la plantilla activa.">i</button></label></div>
+            <div id="expertPanel" class="expert-panel is-hidden"><div class="expert-panel-title"><span class="ui-icon"><svg viewBox="0 0 24 24"><path d="M4 7h10M18 7h2M4 17h2M10 17h10M14 4v6M7 14v6"/></svg></span>Opciones expertas</div><label class="control-label compact-control">Mínimo objetivo<div class="slider-number-row"><input id="expertMinMatches" type="range" min="1" max="20" step="1" value="3" /><input id="expertMinMatchesInput" class="number-compact" type="number" min="1" max="20" step="1" value="3" /></div></label><label class="control-label compact-control">Máximo automático<div class="slider-number-row"><input id="expertMaxMatches" type="range" min="5" max="200" step="1" value="30" /><input id="expertMaxMatchesInput" class="number-compact" type="number" min="5" max="200" step="1" value="30" /></div></label><label class="control-label compact-control">Prominencia mínima<div class="slider-number-row"><input id="expertProminence" type="range" min="0" max="0.40" step="0.005" value="0.035" /><input id="expertProminenceInput" class="number-compact" type="number" min="0" max="0.40" step="0.005" value="0.035" /></div></label><label class="control-label compact-control">Agrupamiento temporal<div class="slider-number-row"><input id="expertGroupFactor" type="range" min="0.40" max="2.00" step="0.05" value="1.00" /><input id="expertGroupFactorInput" class="number-compact" type="number" min="0.40" max="2.00" step="0.05" value="1.00" /></div></label></div>
+            <div class="button-row search-actions"><button id="btnClearMatches" class="btn btn-ghost" disabled><span class="ui-icon"><svg viewBox="0 0 24 24"><path d="m4 20 8-8M14 4l6 6-8 8-6-6z"/></svg></span>Limpiar</button><button id="btnSearch" class="btn btn-success" disabled><span class="ui-icon"><svg viewBox="0 0 24 24"><circle cx="10.5" cy="10.5" r="6.5"/><path d="m15.5 15.5 5 5"/></svg></span>Buscar similares</button></div>
+            <div id="matchSummary" class="search-status-card">Sin coincidencias.</div>
           </div>
         </section>
 
         <section class="panel-card results-card accordion-panel is-collapsed" data-panel="results">
           <button class="accordion-head" type="button" aria-expanded="false">
-            <span class="section-title">Resultados</span>
+            <span class="section-title"><span class="section-icon icon-results" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M5 5h14v14H5zM5 10h14M10 5v14"/></svg></span>Resultados</span>
             <span class="accordion-icon">▾</span>
           </button>
-          <div class="accordion-content">
-            <div class="results-actions">
-              <button id="btnExportCsv" class="btn btn-small" disabled>Descargar CSV</button>
-              <button id="btnExportXlsx" class="btn btn-small" disabled>Descargar XLSX</button>
-              <button id="btnExportTxt" class="btn btn-small" disabled>Descargar TXT Audacity</button>
-            </div>
-            <div class="table-wrap">
-              <table id="matchesTable">
-                <thead>
-                  <tr>
-                    <th class="sortable" data-sort="rank">#</th>
-                    <th class="sortable" data-sort="etiqueta">etiqueta</th>
-                    <th class="sortable" data-sort="score">score</th>
-                    <th class="sortable" data-sort="tmin">tmin</th>
-                    <th class="sortable" data-sort="tmax">tmax</th>
-                    <th class="sortable" data-sort="fmin">fmin</th>
-                    <th class="sortable" data-sort="fmax">fmax</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  <tr><td colspan="7" class="muted-cell">Sin resultados</td></tr>
-                </tbody>
-              </table>
-            </div>
+          <div class="accordion-content results-content">
+            <div class="results-actions export-actions export-actions-top"><button id="btnExportCsv" class="btn btn-small" disabled><span class="ui-icon export-csv"><svg viewBox="0 0 24 24"><path d="M6 3h9l4 4v14H6zM15 3v5h5M9 13h6M9 17h6"/></svg></span>Exportar CSV</button><button id="btnExportXlsx" class="btn btn-small" disabled><span class="export-x-icon">X</span>Exportar XLSX</button><button id="btnExportTxt" class="btn btn-small" disabled><span class="ui-icon export-txt"><svg viewBox="0 0 24 24"><path d="M6 3h8l4 4v14H6z"/><path d="M14 3v5h5"/><path d="M8.5 12h7M8.5 15h7M8.5 18h5"/></svg></span>Exportar TXT Audacity</button></div>
+            <div class="table-wrap"><table id="matchesTable"><thead><tr><th class="sortable" data-sort="rank">#</th><th class="sortable" data-sort="etiqueta">etiqueta</th><th class="sortable" data-sort="score">score</th><th class="sortable" data-sort="tmin">tmin (s)</th><th class="sortable" data-sort="tmax">tmax (s)</th><th class="sortable" data-sort="fmin">fmin (kHz)</th><th class="sortable" data-sort="fmax">fmax (kHz)</th></tr></thead><tbody><tr><td colspan="7" class="muted-cell">Sin resultados</td></tr></tbody></table></div>
+            <div id="resultsFooterSummary" class="results-footer-summary"><span class="ui-icon"><svg viewBox="0 0 24 24"><path d="M8 6h12M8 12h12M8 18h12M4 6h.01M4 12h.01M4 18h.01"/></svg></span><strong>0 coincidencias</strong><span>· ordenado por score</span></div>
           </div>
         </section>
       </aside>
@@ -303,6 +318,7 @@
 
   <input id="fileInput" type="file" accept=".wav,.mp3,.flac,.ogg,.m4a,audio/*" hidden />
 
-  <script src="src/app.js"></script>
+  <script src="src/colormaps.js?v=45.8.3"></script>
+  <script src="src/app.js?v=45.8.3"></script>
 </body>
 </html>

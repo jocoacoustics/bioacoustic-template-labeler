@@ -1,15 +1,104 @@
+# v45.8 — timeline virtual y zoom extremo
+
+- Zoom temporal hasta **100 000 px/s** mediante un slider logarítmico.
+- El canvas visual permanece del tamaño del viewport; el scrollbar usa una línea de tiempo virtual, evitando canvases gigantes.
+- Durante reproducción el visor nunca queda en blanco: usa inmediatamente la mejor resolución ya disponible y sustituye el fallback cuando llega la tesela fina.
+- Cola de teselas con prioridad: viewport actual → precarga hacia delante durante playback → contexto posterior/anterior → precarga media en background.
+- STFT visual adaptativa: ventanas más cortas para zoom temporal profundo y mayor FFT cuando predomina el zoom frecuencial, con compromiso automático tiempo–frecuencia.
+- Precarga ligera de resolución media sobre todo el audio después de mostrar la vista general.
+- El motor analítico de plantillas/búsqueda permanece separado del visor.
+
+# Hotfix v45.6.1
+
+Corrige un fallo de inicialización de v45.6: el selector de paletas llamaba `syncPalettePicker()` antes de inicializar `PALETTE_LABELS`, provocando un `ReferenceError` y abortando el registro de eventos de la interfaz. Esta revisión mantiene las mejoras visuales de v45.6 y añade cache-busting en los recursos principales para evitar reutilizar JavaScript/CSS de builds anteriores en `localhost`.
+
 # Bioacoustic Template Labeler
 
-https://jocoacoustics.github.io/bioacoustic-template-labeler/
+## Novedades v45.6 — UX consolidada, responsive y coherente
 
-Aplicación web pura para marcar una plantilla acústica en un espectrograma y buscar similares acústicas por embeddings simples del patch espectral.
+La v45.6 continúa la línea de v45 construida **directamente sobre v43**. Se conserva el flujo completo de plantillas, varias muestras, caché, métodos de comparación, autoajuste, resultados y exportaciones. La novedad es una capa visual multirresolución independiente inspirada en el visor del Buscador bioacústico v21.
+
+
+
+### Mejora visual v45.6
+
+- **Guía visual** con cuatro pasos y estado contextual del flujo.
+- **Configuración del espectrograma** reorganizada por grupos, con iconos coherentes, sliders compactos, valores visibles y selector de paleta con mini degradados.
+- El icono de **Gamma** representa una curva tonal no lineal; brillo, contraste, altura y zoom usan símbolos propios.
+- **Vista previa de Plantilla** usa la misma escala visual, paleta, brillo, contraste y gamma del espectrograma. El mismo espacio representa la plantilla simple o la compuesta.
+- **Multi-muestra** queda separada en una subtarjeta violeta con contador, método y acciones propias; agregar/quitar muestras ya no se confunde con agregar/quitar plantillas.
+- **Plantilla responsive por ancho del panel**: campos + preview en dos columnas cuando caben; en panel estrecho o móvil, preview debajo. No requiere reducir el zoom del navegador.
+- **Búsqueda** adopta autoajuste segmentado y acciones jerarquizadas; **Resultados** integra exportaciones con iconos, tabla compacta y frecuencias visibles en kHz.
+- **Móvil funcional**: el espectrograma mantiene marcado táctil de ROI con el dedo; dentro del canvas el gesto de marcado no desplaza la página.
+- Se preserva la reproducción estilo v43, el ancla de seguimiento ~40 %, los zooms por espectrograma/reglas, los métodos de búsqueda, cachés, autoajuste y exportaciones.
+
+**Ajustes UX acumulados v45.1–v45.6:**
+
+- El espectrograma calcula automáticamente su altura útil para mostrar el rango completo desde **0 Hz hasta Nyquist** sin depender del slider de altura. El slider queda como ajuste manual opcional; **Restablecer visualización** recupera el ajuste automático.
+- El eje de frecuencia se compacta a una banda estrecha y el rótulo **Frecuencia (kHz)** puede ocupar ligeramente el borde del espectrograma.
+- **Tiempo (s)** queda en la franja superior del eje temporal.
+- La reproducción recupera la cinemática fluida de v43: el cursor avanza hasta aproximadamente el **40 %** del visor y, desde allí, permanece visualmente estable mientras el espectrograma se desplaza continuamente hacia la izquierda. Cerca del final, el espectrograma deja de desplazarse y el cursor completa el recorrido.
+- **Ver todo** incorpora icono de encaje.
+- El playhead recupera mayor presencia visual: centro rojo con halo blanco.
+- Escalas visuales: **Lineal, Mel y Logarítmica**. Mel continúa siendo un remapeo visual del eje; no es un banco de filtros mel ni modifica el motor analítico. La escala logarítmica también es exclusivamente visual.
+- El panel **Plantilla** se reorganiza al estilo del mockup: chips con flechas superiores, campos compactos, frecuencias mostradas en kHz, vista previa compuesta con metadatos, método y acciones de muestras más limpias.
+
+
+**Mejora de reproducción v45.6:**
+
+- Se eliminó el seguimiento por saltos, zonas seguras y throttling que hacían sentir que cursor y espectrograma competían entre sí.
+- El seguimiento vuelve a actualizar `scrollLeft` en cada `requestAnimationFrame`, siguiendo la filosofía de v43.
+- El ancla visual se fija aproximadamente al 40 % del ancho útil del espectrograma.
+- El render multirresolución pinta un corredor por delante y detrás del viewport para que el desplazamiento durante playback no obligue a recalcular la imagen en cada frame.
+- Las solicitudes de teselas durante reproducción se limitan y ocurren en segundo plano; el audio y el playhead nunca esperan al motor visual.
+- El clic simple sobre el espectrograma continúa moviendo únicamente el cursor al instante exacto pulsado, sin recentrar la vista.
+- La selección sobre las reglas temporal y frecuencial permanece visualmente explícita mediante una banda lineal azul mientras se arrastra.
+
+**Corrección UX v45:** se eliminó la barra/miniatura inferior de navegación porque reducía demasiado el área útil y podía hacer parecer que el espectrograma estaba recortado. La vista ahora abre mostrando el audio completo, conserva el zoom avanzado y usa un reproductor compacto propio. La paleta inicial es **Magma clara**, una variante afinada con fondo marfil y energía coral–magenta–púrpura inspirada en el mockup final.
+
+- **Vista general + teselas de detalle** según el zoom, caché LRU y precarga de teselas vecinas.
+- **Zoom avanzado**: Ver todo, `+`, `−`, zoom rectangular tiempo–frecuencia, arrastre de la regla temporal y del eje de frecuencia.
+
+- **Eje temporal científico arriba del espectrograma** con marcas mayores/menores, formato `0 … 55, 1:00, 1:05…` y etiqueta del playhead.
+- **Eje de frecuencia en kHz** con encabezado horizontal `Frecuencia (kHz)` y marcas numéricas “bonitas” adaptadas al zoom.
+- **Zoom sin márgenes negros**: el viewport se mantiene dentro del audio y la vista general actúa como fallback mientras llegan teselas de mayor detalle.
+- **Anotaciones refinadas**: cajas ligeras, chips de etiqueta legibles y colores de fonotipos independientes de la paleta del espectrograma.
+- **UX compacta de escritorio**: proporción aproximada 2/3 visor y 1/3 panel, iconografía SVG coherente por acordeón y tabla de resultados más densa.
+- **Vista completa por defecto**: al cargar el audio se encaja toda la duración; el detalle aumenta con `+`, `−`, selección o las reglas.
+- **Reproductor compacto propio** sincronizado con el playhead, sin la barra nativa del navegador.
+- **Paletas**: Magma clara (por defecto), Magma invertida, Magma, Inferno invertida, Inferno, Plasma invertida, Plasma, Viridis invertida, Viridis, Cividis, Turbo, Hot, Grises y Grises invertidos.
+- **Ajustes visuales**: contraste, brillo, gamma, FFT visual (Auto/1024/2048/4096/8192), detalle temporal y altura.
+- **Escala**: Lineal, Mel y Logarítmica. Mel y Logarítmica son escalas de visualización; no transforman la matriz analítica.
+- **Separación estricta análisis ↔ visualización**: cambiar zoom, paleta, gamma, brillo, contraste, Mel/Logarítmica, FFT visual, detalle o altura no recalcula ni invalida las plantillas y búsquedas de v43.
+- **Atajos**: `0` Ver todo, `z` Zoom selección, `+`/`−` zoom, `Esc` salir del modo zoom, `Espacio` play/pausa y `←`/`→` salto de 1 s.
+
+### Estructura del proyecto v45.6
+
+```text
+bioacoustic-template-labeler-wizard-v45.8/
+├── index.html
+├── styles.css
+├── src/
+│   ├── app.js            # UX, plantillas, búsqueda, resultados y navegación
+│   ├── audio-worker.js   # motor analítico heredado de v43
+│   ├── visual-worker.js  # FFT visual, vista general, teselas y multirresolución
+│   └── colormaps.js      # paletas de visualización, incluidas variantes invertidas
+├── documentacion.html
+├── README.md
+├── LICENSE
+├── .nojekyll
+└── assets/
+```
+
+
+Aplicación web pura para marcar una o varias plantillas acústicas, buscar coincidencias por similitud espectral y revisar resultados sobre un visor multirresolución. Todo el procesamiento base continúa en el navegador.
 
 ## Inicio rápido
 
 Descomprime el ZIP y sirve la carpeta con un servidor local. Por ejemplo, con Python/Conda:
 
 ```bash
-cd bioacoustic-template-labeler-wizard
+cd bioacoustic-template-labeler-wizard-v45.8
 python -m http.server 8000
 ```
 

@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Documentación · Bioacoustic Template Labeler</title>
+  <title>Documentación v45.8 · Bioacoustic Template Labeler</title>
   <style>
     :root {
       --bg: #ffffff;
@@ -129,6 +129,7 @@
   <script defer src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-chtml.js"></script>
 </head>
 <body>
+<!-- Timeline virtual v45.8: canvas fijo, zoom hasta 100 000 px/s, teselas priorizadas y fallback continuo. -->
   <div class="layout">
     <aside>
       <div class="logo">
@@ -147,6 +148,7 @@
         <a href="#parametros">Parámetros</a>
         <a href="#matematica">Formulación matemática</a>
         <a href="#multiplantilla">Modo multi-plantilla</a>
+        <a href="#visor-v45">Visor multirresolución v45.8</a>
         <a href="#actualizaciones">Actualizaciones técnicas</a>
         <a href="#exportacion">Exportación CSV</a>
         <a href="#problemas">Problemas frecuentes</a>
@@ -398,7 +400,50 @@ python -m http.server 8000</code></pre>
         <p>Baja el score mínimo, aumenta la banda o prueba una ROI más representativa.</p>
       </section>
 
-      <section id="actualizaciones">
+      
+<section id="visor-v45" data-search="visor multirresolución zoom paletas gamma brillo contraste fft overview mel visual arquitectura v45">
+  <h2>Visor multirresolución v45.8</h2>
+<div class="callout"><strong>UX v45.6:</strong> la interfaz lateral se reorganiza con una guía visual, configuración agrupada con iconografía coherente, swatches de paleta, vista previa de plantilla sincronizada con la visualización principal, separación clara entre acciones de muestras y acciones de plantillas, autoajuste segmentado y resultados compactos. El panel Plantilla responde al ancho disponible: en escritorio usa dos columnas cuando caben y en móvil apila campos, preview y controles. El marcado táctil de ROI permanece disponible directamente sobre el espectrograma.</div>
+  <p>La v45.6 conserva el motor analítico de v43 y refina la capa visual construida en v45. El flujo de plantillas, varias muestras, métodos de comparación, autoajuste, tabla y exportaciones se conserva. La novedad es una capa de visualización multirresolución completamente separada del motor analítico y una reconstrucción UX orientada a lectura científica.</p><div class="callout"><strong>Corrección UX v45:</strong> la barra de vista previa inferior fue retirada. Consumía altura útil y podía hacer que el espectrograma pareciera recortado. La vista inicial ahora muestra toda la duración del audio y la navegación avanzada se mantiene mediante Ver todo, +/−, Zoom selección y las reglas.</div>
+<div class="callout"><strong>Refinamiento v45.1:</strong> el alto del espectrograma se adapta automáticamente al espacio disponible para mostrar el rango completo desde 0 Hz hasta Nyquist; el eje de frecuencia se estrecha; Tiempo (s) ocupa la franja superior; Ver todo incorpora icono; el playhead usa centro rojo con halo blanco; y la reproducción evita recalcular teselas cuando la vista está completamente encajada. El panel Plantilla adopta una composición más compacta con chips superiores, campos en dos columnas y vista previa compuesta con metadatos.</div>
+
+<div class="callout"><strong>Reproducción y zoom v45.8:</strong> con <em>Seguir reproducción</em> activo, el playhead conserva la cinemática de v43 y el visor usa una línea de tiempo virtual. Los canvases permanecen del tamaño del viewport incluso con zoom extremo. La imagen visible se repinta con la mejor resolución ya disponible; mientras llega una tesela fina se usa inmediatamente una resolución inferior, evitando zonas blancas. Las teselas del viewport y las siguientes en la dirección de reproducción tienen prioridad sobre la precarga de fondo.</div>
+<div class="callout"><strong>Sobre Mel:</strong> la opción <em>Mel</em> de v45.6 es una escala de visualización. Remapea verticalmente las frecuencias con la relación mel, pero la representación analítica de v43 permanece lineal. La opción <em>Logarítmica</em> también es visual y utiliza un mapeo logarítmico invertible que admite 0 Hz mediante un desplazamiento suave.</div>
+  <h3>Arquitectura: representación analítica y visualización</h3>
+  <pre><code>Audio PCM
+   ├── audio-worker.js  → representación analítica canónica → ROI → plantillas → similitud → autoajuste → resultados
+   └── visual-worker.js → FFT visual → caché base + teselas → zoom → paleta / brillo / contraste / gamma</code></pre>
+  <p><strong>Principio de v45:</strong> cambiar una opción puramente visual no invalida las plantillas ni las coincidencias. La representación analítica permanece estable mientras el usuario cambia zoom, escala, paleta o detalle visual.</p>
+  <h3>Ejes, navegación y geometría del viewport</h3>
+  <p>El eje temporal se dibuja en una banda propia <strong>arriba</strong> del espectrograma. Usa marcas mayores y menores, cambia automáticamente de segundos a formato minuto:segundo y muestra una cápsula roja con la posición exacta del playhead. El eje de frecuencia usa el encabezado horizontal <strong>Frecuencia (kHz)</strong> y valores numéricos adaptados al rango visible.</p>
+  <p>Los pasos de ambos ejes se calculan con una familia de valores “bonitos” (1, 2, 2.5 y 5 por potencias de diez), evitando divisiones arbitrarias como 16.7, 16.2, 15.7 kHz cuando existe una graduación más natural.</p>
+  <p>Al arrastrar cualquiera de las reglas, la selección se representa sobre la propia regla mediante una banda lineal azul con extremos marcados y el intervalo numérico activo. Al soltar, se aplica el zoom correspondiente sin eliminar el zoom rectangular directo sobre el espectrograma.</p>
+  <div class="callout"><strong>Zoom sin zonas negras:</strong> la ventana visible se limita siempre al intervalo real del audio. Si un zoom intentaría sobrepasar 0 s o el final, se desplaza la ventana completa conservando su ancho. Mientras una tesela de alta resolución se calcula, la vista general disponible permanece visible como fallback.</div>
+  <h3>Lenguaje visual y anotaciones</h3>
+  <p>La interfaz usa una composición de escritorio cercana a dos tercios para el visor y un tercio para los acordeones. Los títulos de Guía, Configuración, Plantilla, Búsqueda y Resultados usan iconografía SVG consistente; las tarjetas tienen bordes suaves y sombras discretas. Las cajas de fonotipos utilizan una paleta independiente del espectrograma y sus etiquetas se presentan en cápsulas claras con el nombre y, para coincidencias, el score.</p>
+
+  <h3>Vista general y teselas de detalle</h3>
+  <p>Al cargar el audio se calcula una vista general del espectrograma. Cuando el usuario se acerca o se desplaza, el visor solicita teselas de mayor detalle para la región visible y precarga teselas vecinas. Las teselas recientes se mantienen en una caché LRU. Mientras una tesela fina se calcula, la vista general sirve como respaldo inmediato.</p>
+  <h3>Zoom y navegación</h3>
+  <table><tbody>
+    <tr><th>Control</th><th>Comportamiento</th></tr>
+    <tr><td><strong>Ver todo</strong> / tecla <code>0</code></td><td>Ajusta todo el audio al visor y restaura el rango completo de frecuencia.</td></tr>
+    <tr><td><code>+</code> / <code>−</code></td><td>Acerca o aleja temporalmente alrededor de la posición de reproducción.</td></tr>
+    <tr><td><strong>Zoom selección</strong> / tecla <code>z</code></td><td>El arrastre sobre el espectrograma hace zoom en tiempo y frecuencia. Con el modo apagado, el mismo gesto continúa creando una plantilla como en v43.</td></tr>
+    <tr><td>Arrastrar la regla temporal</td><td>Zoom solo temporal.</td></tr>
+    <tr><td>Arrastrar el eje de frecuencia</td><td>Zoom solo frecuencial.</td></tr>
+    <tr><td>Vista completa inicial</td><td>El audio se encaja automáticamente en el ancho disponible. El zoom se controla con +/−, selección rectangular o las reglas temporal y frecuencial.</td></tr>
+    <tr><td><code>Espacio</code>, <code>←</code>, <code>→</code></td><td>Play/pausa y saltos de un segundo.</td></tr>
+  </tbody></table>
+  <h3>Configuración del espectrograma</h3>
+  <p>La configuración visual incluye <strong>Lineal</strong>, <strong>Mel</strong> y <strong>Logarítmica</strong>; paletas Magma clara, Magma invertida, Magma, Inferno invertida, Inferno, Plasma invertida, Plasma, Viridis invertida, Viridis, Cividis, Turbo, Hot, Grises y Grises invertidos; controles de contraste, brillo y gamma; FFT visual en Auto, 1024, 2048, 4096 u 8192; detalle temporal Rápido, Medio, Alto o Ultra; altura del espectrograma y zoom temporal. <strong>Magma clara</strong> es el valor visual inicial: fondo marfil, energía débil melocotón, energía media coral, energía alta magenta y máximos púrpura oscuro.</p>
+  <p>Mel es solamente visual. Usa la transformación <code>m = 2595 log10(1 + f/700)</code> para remapear la coordenada vertical. No aplica un banco de filtros Mel y no cambia la matriz usada por las búsquedas.</p>
+  <h3>FFT visual y detalle temporal</h3>
+  <p>Para una FFT de tamaño <code>N</code> y sample rate <code>f_s</code>, la duración aproximada de la ventana es <code>T = N/f_s</code> y la separación entre bins es <code>Δf = f_s/N</code>. El modo Auto selecciona un tamaño según el sample rate y el nivel de zoom. El control de detalle temporal decide cuántas ventanas se agregan por columna para reducir la pérdida de eventos breves al ver intervalos largos.</p>
+  <h3>Qué permanece intacto desde v43</h3>
+  <p>Se mantienen: carga local de audio; frecuencia hasta Nyquist; ROI tiempo–frecuencia; múltiples fonotipos con chips, colores y carruseles; agregar y quitar plantillas; creación de una nueva plantilla al dibujar después de haber buscado; búsqueda incremental; parámetros y resultados independientes por plantilla; edición bidireccional de etiquetas; <strong>Usar varias muestras</strong>; consenso NCC, consenso ponderado, medoide, mediana alineada y promedio alineado; caché por método; coseno, correlación normalizada, euclidiana normalizada, correlación cruzada, correlación cruzada 2D y correlación 2D multi-escala; scores 0–1; autoajuste Ninguno, Conservador, Balanceado y Sensible; primera corrida Balanceado y posterior paso automático a Ninguno; Modo experto; Ver cajas; tabla ordenable y exportaciones CSV, XLSX y TXT Audacity.</p>
+</section>
+<section id="actualizaciones">
         <h2>Actualizaciones técnicas y notas de versión</h2>
         <p>Esta sección reúne las mejoras agregadas durante las iteraciones recientes. Se conserva como registro técnico para entender la evolución del flujo multi-plantilla, la caché, los métodos de comparación y los cambios de exportación.</p>
       </section>
@@ -417,7 +462,7 @@ python -m http.server 8000</code></pre>
 <section id="v17-multiplantilla-simplificado">
   <h2>Flujo multi-plantilla simplificado</h2>
   <p>Desde la versión v17, el etiquetador trabaja como un gestor de plantillas acústicas. Cada plantilla conserva su etiqueta, color, coordenadas, parámetros de búsqueda y coincidencias.</p>
-  <p>El panel <strong>Plantilla</strong> permite navegar con chips superiores y carrusel inferior. El botón <strong>Agregar plantilla +</strong> guarda o actualiza la plantilla actual y abre una nueva plantilla para seguir marcando. El botón <strong>Quitar plantilla −</strong> elimina la plantilla activa.</p>
+  <p>El panel <strong>Plantilla</strong> permite navegar con chips superiores y flechas laterales. En v45.1 los campos temporales y frecuenciales se compactan en dos columnas; las frecuencias se muestran en kHz, mientras internamente siguen almacenándose en Hz. El botón <strong>Agregar plantilla +</strong> guarda o actualiza la plantilla actual y abre una nueva plantilla para seguir marcando. El botón <strong>Quitar plantilla −</strong> elimina la plantilla activa.</p>
   <p>El botón <strong>Buscar coincidencias</strong> guarda automáticamente la plantilla marcada si la caja es válida y busca todas las plantillas válidas, aplicando el autoajuste por plantilla. Luego el panel <strong>Búsqueda</strong> permite revisar y ajustar cada plantilla con la misma navegación por chips y carrusel.</p>
   <p>La tabla de resultados muestra primero el número de fila (#) y luego la etiqueta en una cápsula coloreada editable. Al editar esa etiqueta, se actualiza la plantilla completa, sus coincidencias y las exportaciones CSV, XLSX y TXT Audacity.</p>
 </section>

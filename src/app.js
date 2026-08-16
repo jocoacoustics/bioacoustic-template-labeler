@@ -12,9 +12,37 @@ const CONFIG = {
   embSize: 48,
   maxMatchesToDraw: 300,
   maxMatchesToStore: 500,
-  freqAxisW: 96,
-  timeAxisH: 34,
-  templateColors: ['#00e5ff', '#39ff14', '#2979ff', '#ffd60a', '#ff4fd8', '#7c4dff', '#00f5a0', '#4cc9f0', '#c6ff00', '#ff66c4'],
+  freqAxisW: 48,
+  timeAxisH: 32,
+  freqTitleH: 14,
+  templateColors: ['#22c55e', '#8b5cf6', '#06b6d4', '#3b82f6', '#f59e0b', '#ec4899', '#14b8a6', '#a855f7', '#84cc16', '#f97316'],
+};
+
+
+const VISUAL_DEFAULTS = Object.freeze({
+  freqScale: 'linear', colormap: 'magma_light', contrast: 1.0, brightness: 0.0, gamma: 1.0,
+  fftSize: 'auto', quality: 'alta', height: 520, pxPerSec: 55, autoHeight: true,
+});
+const VISUAL_TILE_PX = 1024;
+const VISUAL_MAX_TILE_CACHE = 64;
+const VISUAL_MAX_TILE_CACHE_BYTES = 160 * 1024 * 1024;
+// v45.8: la escala temporal visible ya no depende del ancho físico del canvas.
+// El DOM usa una línea de tiempo virtual acotada para el scrollbar y los canvases
+// permanecen del tamaño del viewport. Esto permite zoom extremo sin canvases gigantes.
+const VISUAL_MAX_PX_PER_SEC = 100000;
+const VISUAL_MAX_VIRTUAL_SCROLL_WIDTH = 8000000;
+const VISUAL_MIN_DEEP_TILE_SECONDS = 0.04;
+const VISUAL_MAX_QUEUED_REQUESTS = 48;
+
+const visualState = {
+  worker: null, workerReady: false, epoch: 1, overview: null, tiles: new Map(), pending: new Set(),
+  renderTimer: null, tileTimer: null, recomputeTimer: null, initialized: false,
+  playbackRenderTimer: null,
+  paintStart: 0, paintEnd: 0, lastPlaybackTileRequestAt: 0,
+  requestQueue: [], activeRequestKey: null, requestSeq: 0,
+  backgroundWarmScheduled: false, lastPlaybackRenderAt: 0,
+  virtualWidth: 0, viewportWidth: 0,
+  ...VISUAL_DEFAULTS,
 };
 
 const state = {
@@ -25,6 +53,7 @@ const state = {
   sampleRate: 0,
   duration: 0,
   spectrogramReady: false,
+  analysisDisplay: null,
   display: null,
   roi: null,
   savedRoi: null,
@@ -48,11 +77,17 @@ const state = {
   workerCompoundWarmKeys: new Set(),
   startX: 0,
   startY: 0,
+  zoomDragging: false,
+  ruleDrag: null,
   rafId: null,
+  lastFollowScrollAt: 0,
 };
 
 const el = {
   appShell: document.getElementById('appShell'),
+  workspace: document.querySelector('.workspace'),
+  sidePanel: document.querySelector('.side-panel'),
+  sidePanelResizer: document.getElementById('sidePanelResizer'),
   btnOpenAudio: document.getElementById('btnOpenAudio'),
   btnExportCsv: document.getElementById('btnExportCsv'),
   btnExportXlsx: document.getElementById('btnExportXlsx'),
@@ -70,12 +105,44 @@ const el = {
   audioInfo: document.getElementById('audioInfo'),
   freqScaleSelect: document.getElementById('freqScaleSelect'),
   colormapSelect: document.getElementById('colormapSelect'),
+  palettePickerButton: document.getElementById('palettePickerButton'),
+  palettePickerMenu: document.getElementById('palettePickerMenu'),
+  palettePickerLabel: document.getElementById('palettePickerLabel'),
+  palettePickerSwatch: document.getElementById('palettePickerSwatch'),
+  quickFreqScale: document.getElementById('quickFreqScale'),
+  quickColormap: document.getElementById('quickColormap'),
+  contrastRange: document.getElementById('contrastRange'),
+  contrastValue: document.getElementById('contrastValue'),
+  brightnessRange: document.getElementById('brightnessRange'),
+  brightnessValue: document.getElementById('brightnessValue'),
+  gammaRange: document.getElementById('gammaRange'),
+  gammaValue: document.getElementById('gammaValue'),
+  visualFftSelect: document.getElementById('visualFftSelect'),
+  visualQualitySelect: document.getElementById('visualQualitySelect'),
+  visualHeightRange: document.getElementById('visualHeightRange'),
+  visualHeightValue: document.getElementById('visualHeightValue'),
+  pxPerSecRange: document.getElementById('pxPerSecRange'),
+  pxPerSecValue: document.getElementById('pxPerSecValue'),
+  btnResetVisual: document.getElementById('btnResetVisual'),
   audioPlayer: document.getElementById('audioPlayer'),
+  btnPlayPause: document.getElementById('btnPlayPause'),
+  btnBackOne: document.getElementById('btnBackOne'),
+  btnForwardOne: document.getElementById('btnForwardOne'),
+  playerTime: document.getElementById('playerTime'),
+  playerSeek: document.getElementById('playerSeek'),
+  btnMute: document.getElementById('btnMute'),
+  playbackRate: document.getElementById('playbackRate'),
   spectrogramTitle: document.getElementById('spectrogramTitle'),
   workflowBadge: document.getElementById('workflowBadge'),
   viewerHint: document.getElementById('viewerHint'),
   followPlayback: document.getElementById('followPlayback'),
   btnCenterPlayhead: document.getElementById('btnCenterPlayhead'),
+  btnFitAll: document.getElementById('btnFitAll'),
+  btnZoomOut: document.getElementById('btnZoomOut'),
+  btnZoomIn: document.getElementById('btnZoomIn'),
+  zoomSelection: document.getElementById('zoomSelection'),
+  zoomLabel: document.getElementById('zoomLabel'),
+  viewRangeLabel: document.getElementById('viewRangeLabel'),
   spectrogramViewport: document.getElementById('spectrogramViewport'),
   emptyViewer: document.getElementById('emptyViewer'),
   spectrogramStage: document.getElementById('spectrogramStage'),
@@ -85,6 +152,9 @@ const el = {
   overlayCanvas: document.getElementById('overlayCanvas'),
   canvasLayer: document.getElementById('canvasLayer'),
   playhead: document.getElementById('playhead'),
+  playheadAxisLabel: document.getElementById('playheadAxisLabel'),
+  zoomRect: document.getElementById('zoomRect'),
+  analyticCanvas: document.getElementById('analyticCanvas'),
   coachTitle: document.getElementById('coachTitle'),
   coachText: document.getElementById('coachText'),
   roiTmin: document.getElementById('roiTmin'),
@@ -113,6 +183,7 @@ const el = {
   strideSec: document.getElementById('strideSec'),
   strideSecInput: document.getElementById('strideSecInput'),
   autoAdjustMode: document.getElementById('autoAdjustMode'),
+  autoAdjustSegments: document.getElementById('autoAdjustSegments'),
   expertMode: document.getElementById('expertMode'),
   expertPanel: document.getElementById('expertPanel'),
   expertMinMatches: document.getElementById('expertMinMatches'),
@@ -128,8 +199,10 @@ const el = {
   sampleEstimator: document.getElementById('sampleEstimator'),
   samplePanel: document.getElementById('samplePanel'),
   samplePreviewCanvas: document.getElementById('samplePreviewCanvas'),
+  samplePreviewMeta: document.getElementById('samplePreviewMeta'),
   sampleSummary: document.getElementById('sampleSummary'),
   sampleProgress: document.getElementById('sampleProgress'),
+  sampleCountBadge: document.getElementById('sampleCountBadge'),
   btnAddSample: document.getElementById('btnAddSample'),
   btnRemoveSample: document.getElementById('btnRemoveSample'),
   infoDots: Array.from(document.querySelectorAll('.info-dot')),
@@ -137,6 +210,7 @@ const el = {
   btnClearMatches: document.getElementById('btnClearMatches'),
   matchSummary: document.getElementById('matchSummary'),
   matchesTable: document.getElementById('matchesTable'),
+  resultsFooterSummary: document.getElementById('resultsFooterSummary'),
   accordionPanels: Array.from(document.querySelectorAll('.accordion-panel')),
 };
 
@@ -223,7 +297,7 @@ function scrollSidePanelTo(name, behavior = 'smooth') {
 }
 
 function resetPanelsForInitialState() {
-  setPanelOpen('guide', true);
+  setPanelOpen('guide', false);
   setPanelOpen('spectrogram-config', false);
   setPanelOpen('roi', false);
   setPanelOpen('search', false);
@@ -231,7 +305,7 @@ function resetPanelsForInitialState() {
 }
 
 function openRoiStep() {
-  setPanelOpen('guide', true);
+  setPanelOpen('guide', false);
   setPanelOpen('roi', true);
   setPanelOpen('search', false);
   setPanelOpen('results', false);
@@ -288,6 +362,9 @@ function clamp(v, a, b) {
 }
 
 function resetForNewAudio() {
+  if (visualState.worker) { visualState.worker.terminate(); visualState.worker = null; }
+  Object.assign(visualState, {workerReady:false,overview:null,initialized:false,autoHeight:true,epoch:visualState.epoch+1,requestQueue:[],activeRequestKey:null,backgroundWarmScheduled:false,paintStart:0,paintEnd:0}); visualState.tiles.clear(); visualState.pending.clear();
+
   state.roi = null;
   state.savedRoi = null;
   state.templates = [];
@@ -301,7 +378,11 @@ function resetForNewAudio() {
   state.forceAutoSearch = false;
   state.workerCompoundWarmKeys = new Set();
   state.matches = [];
+  if (el.btnFitAll) el.btnFitAll.disabled = true;
+  if (el.btnZoomOut) el.btnZoomOut.disabled = true;
+  if (el.btnZoomIn) el.btnZoomIn.disabled = true;
   state.spectrogramReady = false;
+  state.analysisDisplay = null;
   state.display = null;
   state.dragging = false;
   state.moved = false;
@@ -417,21 +498,21 @@ function roundForCache(v) {
 function samplesCacheKey(samples, estimator, outW, outH) {
   const valid = (samples || []).filter(isRoiValid);
   const body = valid.map(s => [s.tmin, s.tmax, s.fmin, s.fmax].map(roundForCache).join(',')).join('|');
-  const disp = state.display ? `${state.display.width}x${state.display.height}:${roundForCache(state.display.fmin)}:${roundForCache(state.display.fmax)}:${state.display.freqScale}:${state.display.colormap}` : 'nodisplay';
+  const d = state.analysisDisplay; const disp = d ? `${d.width}x${d.height}:${roundForCache(d.fmin)}:${roundForCache(d.fmax)}:analysis-v43` : 'noanalysis';
   return `${estimator || 'consensus_ncc'}::${outW}x${outH}::${disp}::${body}`;
 }
 
 function samplesBaseCacheKey(samples, outW, outH) {
   const valid = (samples || []).filter(isRoiValid);
   const body = valid.map(s => [s.tmin, s.tmax, s.fmin, s.fmax].map(roundForCache).join(',')).join('|');
-  const disp = state.display ? `${state.display.width}x${state.display.height}:${roundForCache(state.display.fmin)}:${roundForCache(state.display.fmax)}:${state.display.freqScale}:${state.display.colormap}` : 'nodisplay';
+  const d = state.analysisDisplay; const disp = d ? `${d.width}x${d.height}:${roundForCache(d.fmin)}:${roundForCache(d.fmax)}:analysis-v43` : 'noanalysis';
   return `${outW}x${outH}::${disp}::${body}`;
 }
 
 function workerCompoundKey(samples, estimator) {
   const valid = (samples || []).filter(isRoiValid);
   const body = valid.map(s => [s.tmin, s.tmax, s.fmin, s.fmax].map(roundForCache).join(',')).join('|');
-  const disp = state.display ? `${state.display.width}x${state.display.height}:${roundForCache(state.display.fmin)}:${roundForCache(state.display.fmax)}:${state.display.freqScale}` : 'nodisplay';
+  const d = state.analysisDisplay; const disp = d ? `${d.width}x${d.height}:${roundForCache(d.fmin)}:${roundForCache(d.fmax)}:analysis-v43` : 'noanalysis';
   return `${estimator || 'consensus_ncc'}::${disp}::${body}`;
 }
 
@@ -483,20 +564,75 @@ function setSampleProgress(text = '', pct = null, visible = true) {
 
 function updateSamplePanelState(tpl = getActiveTemplate()) {
   const enabled = Boolean(el.useMultiSamples?.checked);
+  // v45.6: la vista previa efectiva vive fuera del bloque multi-muestra y
+  // siempre permanece visible. El bloque de muestras aparece solo si se activa.
   if (el.samplePanel) el.samplePanel.classList.toggle('is-hidden', !enabled);
   if (el.sampleEstimator) el.sampleEstimator.disabled = !enabled;
   if (el.btnAddSample) el.btnAddSample.disabled = !enabled || !isRoiValid(state.roi);
   const n = tpl && Array.isArray(tpl.samples) ? tpl.samples.filter(isRoiValid).length : 0;
   if (el.btnRemoveSample) el.btnRemoveSample.disabled = !enabled || n === 0;
+  if (el.sampleCountBadge) el.sampleCountBadge.textContent = String(n);
   if (el.sampleSummary && enabled) {
     el.sampleSummary.textContent = n
-      ? `Muestras agregadas: ${n}. Método: ${sampleEstimatorLabel(el.sampleEstimator?.value)}.`
+      ? `● ${n} muestra${n === 1 ? '' : 's'} · ${sampleEstimatorLabel(el.sampleEstimator?.value)} · lista`
       : 'Marca una caja y pulsa Agregar muestra.';
   }
   drawSamplePreview(tpl);
 }
 
+
+function currentPreviewSupport(tpl = getActiveTemplate()) {
+  const enabled = Boolean(el.useMultiSamples?.checked);
+  const validSamples = tpl && Array.isArray(tpl.samples) ? tpl.samples.filter(isRoiValid) : [];
+  if (enabled && validSamples.length) return compoundSupportFromSamples(validSamples);
+  if (tpl && isTemplateValid(tpl)) return { tmin: tpl.tmin, tmax: tpl.tmax, fmin: tpl.fmin, fmax: tpl.fmax };
+  return isRoiValid(state.roi) ? state.roi : null;
+}
+
+function desiredPreviewAspectFromRoi(roi) {
+  if (!roi || !state.display) return 1.8;
+  const timePx = Math.max(18, Math.abs(timeToX(roi.tmax) - timeToX(roi.tmin)) || 18);
+  const freqPx = Math.max(18, Math.abs(freqToY(roi.fmin) - freqToY(roi.fmax)) || 18);
+  return clamp(timePx / freqPx, 0.45, 8.0);
+}
+
+function syncSamplePreviewCanvasSize(tpl = getActiveTemplate()) {
+  const canvas = el.samplePreviewCanvas;
+  if (!canvas) return;
+  const roi = currentPreviewSupport(tpl);
+  const aspect = desiredPreviewAspectFromRoi(roi);
+  const host = canvas.parentElement;
+  const hostW = Math.max(150, Math.round(host?.clientWidth || 320));
+  const maxW = Math.min(hostW, 360);
+  const maxH = 260;
+  let cssW = maxW;
+  let cssH = cssW / Math.max(0.45, aspect);
+  if (cssH > maxH) {
+    cssH = maxH;
+    cssW = cssH * aspect;
+  }
+  if (cssW < 150) {
+    cssW = 150;
+    cssH = Math.min(maxH, cssW / Math.max(0.45, aspect));
+  }
+  cssW = Math.min(hostW, cssW);
+  cssH = clamp(cssH, 96, maxH);
+  canvas.style.width = `${Math.round(cssW)}px`;
+  canvas.style.height = `${Math.round(cssH)}px`;
+  canvas.style.maxWidth = '100%';
+  canvas.style.margin = '0 auto';
+  canvas.style.aspectRatio = `${aspect.toFixed(4)} / 1`;
+  const rawDpr = window.devicePixelRatio || 1;
+  const pixelW = Math.max(220, Math.round(cssW * rawDpr));
+  const pixelH = Math.max(96, Math.round(cssH * rawDpr));
+  if (canvas.width !== pixelW || canvas.height !== pixelH) {
+    canvas.width = pixelW;
+    canvas.height = pixelH;
+  }
+}
+
 function drawSamplePreview(tpl = getActiveTemplate()) {
+  syncSamplePreviewCanvasSize(tpl);
   const canvas = el.samplePreviewCanvas;
   if (!canvas) return;
   const ctx = canvas.getContext('2d');
@@ -508,10 +644,23 @@ function drawSamplePreview(tpl = getActiveTemplate()) {
 
   const enabled = Boolean(el.useMultiSamples?.checked);
   const validSamples = tpl && Array.isArray(tpl.samples) ? tpl.samples.filter(isRoiValid) : [];
-  if (!enabled || !state.display || !el.spectrogramCanvas || !validSamples.length) {
+
+  // Modo simple: mostrar siempre la ROI activa como plantilla visual.
+  if (!enabled) {
     state.samplePreviewToken++;
     setSampleProgress('', 0, false);
-    drawPreviewEmpty(ctx, w, h, enabled ? 'Agrega muestras para ver la plantilla compuesta' : '');
+    const roi = tpl && isTemplateValid(tpl)
+      ? { tmin: tpl.tmin, tmax: tpl.tmax, fmin: tpl.fmin, fmax: tpl.fmax }
+      : (isRoiValid(state.roi) ? state.roi : null);
+    if (roi && drawSingleTemplatePreview(ctx, w, h, roi, tpl)) return;
+    drawPreviewEmpty(ctx, w, h, 'Dibuja una plantilla para ver su vista previa');
+    return;
+  }
+
+  if (!state.display || !el.spectrogramCanvas || !validSamples.length) {
+    state.samplePreviewToken++;
+    setSampleProgress('', 0, false);
+    drawPreviewEmpty(ctx, w, h, 'Agrega muestras para ver la plantilla compuesta');
     return;
   }
 
@@ -526,18 +675,18 @@ function drawSamplePreview(tpl = getActiveTemplate()) {
   }
   const cachedPreview = cacheByMethod ? cacheByMethod.get(estimator) : null;
   if (cachedPreview) {
-    ctx.putImageData(cachedPreview, 0, 0);
+    putCompositePreview(ctx, cachedPreview, tpl);
     drawSamplePreviewFrame(ctx, w, h, tpl, validSamples.length, estimator, true);
-    setSampleProgress(`Plantilla compuesta en caché · ${sampleEstimatorLabel(estimator)}.`, 100, true);
+    setSampleProgress('', 100, false);
     warmWorkerCompoundTemplate(tpl, validSamples, estimator);
     return;
   }
   // Compatibilidad con la caché vieja basada en una clave completa.
   if (tpl && tpl.previewCacheKey === cacheKey && tpl.previewImageData) {
     ensureTemplateCompositeCache(tpl).set(estimator, tpl.previewImageData);
-    ctx.putImageData(tpl.previewImageData, 0, 0);
+    putCompositePreview(ctx, tpl.previewImageData, tpl);
     drawSamplePreviewFrame(ctx, w, h, tpl, validSamples.length, estimator, true);
-    setSampleProgress(`Plantilla compuesta en caché · ${sampleEstimatorLabel(estimator)}.`, 100, true);
+    setSampleProgress('', 100, false);
     warmWorkerCompoundTemplate(tpl, validSamples, estimator);
     return;
   }
@@ -563,9 +712,9 @@ function drawSamplePreview(tpl = getActiveTemplate()) {
         activeTpl.previewBaseKey = baseKey;
         activeTpl.previewCacheKey = cacheKey;
         activeTpl.previewImageData = composite;
-        ctx.putImageData(composite, 0, 0);
+        putCompositePreview(ctx, composite, activeTpl);
         drawSamplePreviewFrame(ctx, w, h, activeTpl, validSamples.length, estimator, false);
-        setSampleProgress(`Plantilla compuesta lista · ${sampleEstimatorLabel(estimator)}.`, 100, true);
+        setSampleProgress('', 100, false);
         warmWorkerCompoundTemplate(activeTpl, validSamples, estimator);
       } else {
         drawPreviewEmpty(ctx, w, h, 'No pude construir la vista previa');
@@ -579,6 +728,140 @@ function drawSamplePreview(tpl = getActiveTemplate()) {
   }, 30);
 }
 
+function previewYToFreq(y, h, roi) {
+  const frac=clamp(y/Math.max(1,h),0,1), f0=roi.fmin, f1=roi.fmax;
+  if(visualState.freqScale==='mel'){const m0=hzToMel(f0),m1=hzToMel(f1);return melToHz(m1-frac*(m1-m0));}
+  if(visualState.freqScale==='log'){const l0=hzToVisualLog(f0),l1=hzToVisualLog(f1);return visualLogToHz(l1-frac*(l1-l0));}
+  return f1-frac*(f1-f0);
+}
+
+function previewTimeTickLabel(sec, duration, { withUnit = false } = {}) {
+  sec=Math.max(0,Number(sec)||0);
+  const d=Math.max(0,Number(duration)||0);
+  let label='';
+  if(sec>=60){
+    const m=Math.floor(sec/60), s=sec-m*60;
+    const decimals=d<=5?2:d<=30?1:0;
+    label = decimals ? `${m}:${s.toFixed(decimals).padStart(3+decimals,'0')}` : `${m}:${String(Math.round(s)).padStart(2,'0')}`;
+  } else {
+    const decimals=d<=3?2:d<=15?1:0;
+    label = decimals ? sec.toFixed(decimals) : String(Math.round(sec));
+  }
+  return withUnit ? `${label} s` : label;
+}
+
+function drawPreviewInternalAxes(ctx, w, h, roi) {
+  if(!roi || !(roi.tmax>roi.tmin) || !(roi.fmax>roi.fmin)) return;
+  const canvas=el.samplePreviewCanvas;
+  const cssW=Math.max(1,canvas?.clientWidth||w), dpr=Math.max(1,Math.min(3,w/cssW));
+  const fontPx=9.5*dpr, smallPx=8.25*dpr, tick=5*dpr, inset=5*dpr;
+  const duration=Math.max(0, roi.tmax-roi.tmin);
+  const timeTicks=5;
+  const freqTicks=5;
+
+  const strokeText=(text,x,y,align='left',baseline='middle',font=`700 ${fontPx}px Inter, Arial, sans-serif`)=>{
+    ctx.save();
+    ctx.font=font;
+    ctx.textAlign=align;
+    ctx.textBaseline=baseline;
+    ctx.lineJoin='round';
+    ctx.lineWidth=Math.max(2.4, 3.2*dpr);
+    ctx.strokeStyle='rgba(255,255,255,.96)';
+    ctx.fillStyle='#111827';
+    ctx.strokeText(text,x,y);
+    ctx.fillText(text,x,y);
+    ctx.restore();
+  };
+
+  const strokeLine=(x0,y0,x1,y1)=>{
+    ctx.save();
+    ctx.lineCap='round';
+    ctx.strokeStyle='rgba(255,255,255,.96)';
+    ctx.lineWidth=Math.max(2,2.5*dpr);
+    ctx.beginPath(); ctx.moveTo(x0,y0); ctx.lineTo(x1,y1); ctx.stroke();
+    ctx.strokeStyle='#111827';
+    ctx.lineWidth=Math.max(1,1.2*dpr);
+    ctx.beginPath(); ctx.moveTo(x0,y0); ctx.lineTo(x1,y1); ctx.stroke();
+    ctx.restore();
+  };
+
+  const leftX=.75*dpr;
+  const bottomY=h-.75*dpr;
+  strokeLine(leftX, inset*1.65, leftX, bottomY);
+  strokeLine(leftX, bottomY, w-inset, bottomY);
+
+  for(let i=0;i<freqTicks;i++){
+    const frac=i/(freqTicks-1);
+    const y=inset*1.95 + frac*(bottomY-inset*2.85);
+    const freq=roi.fmax - frac*(roi.fmax-roi.fmin);
+    strokeLine(leftX, y, leftX+tick, y);
+    const label = i===0 ? `${(freq/1000).toFixed(3)} kHz` : (freq/1000).toFixed(3);
+    strokeText(label, inset+tick+2*dpr, y, 'left', 'middle');
+  }
+
+  for(let i=0;i<timeTicks;i++){
+    const frac=i/(timeTicks-1);
+    const x=leftX + frac*(w-leftX-inset);
+    const rel=duration*frac;
+    strokeLine(x, bottomY, x, bottomY-tick);
+    if(i===0) continue; // evita choque con la etiqueta inferior de frecuencia
+    const align=i===timeTicks-1?'right':'center';
+    const labelY = bottomY - tick - 2*dpr;
+    const xLabel = i===timeTicks-1 ? Math.min(x, w-inset) : x;
+    const label = i===timeTicks-1 ? previewTimeTickLabel(rel,duration,{withUnit:true}) : previewTimeTickLabel(rel,duration);
+    strokeText(label, xLabel, labelY, align, 'bottom');
+  }
+}
+
+function drawSingleTemplatePreview(ctx, w, h, roi, tpl = getActiveTemplate()) {
+  if (!roi || !visualState.overview || !state.display) return false;
+  const img=ctx.createImageData(w,h), baseMin=visualState.overview.vmin, baseMax=visualState.overview.vmax, range=Math.max(1e-6,baseMax-baseMin);
+  for(let x=0;x<w;x++){
+    const t=roi.tmin+((x+.5)/w)*Math.max(1e-9,roi.tmax-roi.tmin);
+    const cache=bestVisualCacheForTime(t)||visualState.overview;
+    const col=clamp(Math.floor((t-cache.start)/Math.max(1e-9,cache.end-cache.start)*cache.cols),0,cache.cols-1);
+    for(let y=0;y<h;y++){
+      const freq=previewYToFreq(y+.5,h,roi), row=visualSourceRow(cache,freq), raw=cache.db[col*cache.rows+row];
+      let norm=(raw-baseMin)/range; norm=(norm-.5)*visualState.contrast+.5+visualState.brightness; norm=Math.pow(clamp(norm,0,1),visualState.gamma);
+      const rgb=(window.V45_COLORMAPS||{}).color ? window.V45_COLORMAPS.color(visualState.colormap,norm):[Math.round(norm*255),Math.round(norm*255),Math.round(norm*255)];
+      const i=(y*w+x)*4; img.data[i]=rgb[0];img.data[i+1]=rgb[1];img.data[i+2]=rgb[2];img.data[i+3]=255;
+    }
+  }
+  ctx.putImageData(img,0,0);
+  drawPreviewInternalAxes(ctx,w,h,roi);
+  const color = tpl?.color || '#06b6d4';
+  if (el.samplePreviewCanvas) { el.samplePreviewCanvas.style.borderColor = color; el.samplePreviewCanvas.style.boxShadow = `0 0 0 1px ${color}33`; }
+  const dur = Math.max(0, roi.tmax - roi.tmin);
+  if (el.samplePreviewMeta) el.samplePreviewMeta.textContent = `Duración: ${dur.toFixed(2)} s · Rango: ${(roi.fmin/1000).toFixed(3)}–${(roi.fmax/1000).toFixed(3)} kHz`;
+  return true;
+}
+
+function themeCompositePreviewImage(imageData) {
+  if (!imageData || !imageData.data) return imageData;
+  const src=imageData.data, out=new Uint8ClampedArray(src.length);
+  for(let i=0;i<src.length;i+=4){
+    let norm=(0.2126*src[i]+0.7152*src[i+1]+0.0722*src[i+2])/255;
+    norm=(norm-.5)*visualState.contrast+.5+visualState.brightness;
+    norm=Math.pow(clamp(norm,0,1),visualState.gamma);
+    const rgb=(window.V45_COLORMAPS||{}).color ? window.V45_COLORMAPS.color(visualState.colormap,norm):[Math.round(norm*255),Math.round(norm*255),Math.round(norm*255)];
+    out[i]=rgb[0];out[i+1]=rgb[1];out[i+2]=rgb[2];out[i+3]=src[i+3];
+  }
+  return new ImageData(out,imageData.width,imageData.height);
+}
+function remapCompositePreviewScale(imageData, tpl) {
+  if (!imageData || visualState.freqScale==='linear') return imageData;
+  const support=tpl && Array.isArray(tpl.samples) ? compoundSupportFromSamples(tpl.samples) : null;
+  if(!support || !(support.fmax>support.fmin)) return imageData;
+  const w=imageData.width,h=imageData.height,src=imageData.data,out=new Uint8ClampedArray(src.length);
+  for(let y=0;y<h;y++){
+    const freq=previewYToFreq(y+.5,h,support);
+    const sy=clamp(Math.round(((support.fmax-freq)/(support.fmax-support.fmin))*Math.max(0,h-1)),0,h-1);
+    for(let x=0;x<w;x++){const si=(sy*w+x)*4,di=(y*w+x)*4;out[di]=src[si];out[di+1]=src[si+1];out[di+2]=src[si+2];out[di+3]=src[si+3];}
+  }
+  return new ImageData(out,w,h);
+}
+function putCompositePreview(ctx,imageData,tpl){ctx.putImageData(remapCompositePreviewScale(themeCompositePreviewImage(imageData),tpl),0,0);}
+
 function drawSamplePreviewFrame(ctx, w, h, tpl, sampleCount, estimatorValue, fromCache = false) {
   const color = tpl?.color || '#00e5ff';
   // El marco se aplica como borde CSS del canvas para no tapar píxeles
@@ -587,15 +870,18 @@ function drawSamplePreviewFrame(ctx, w, h, tpl, sampleCount, estimatorValue, fro
     el.samplePreviewCanvas.style.borderColor = color;
     el.samplePreviewCanvas.style.boxShadow = `0 0 0 1px ${color}33`;
   }
-  ctx.fillStyle = 'rgba(15,23,42,0.76)';
-  ctx.fillRect(8, h - 30, Math.min(w - 16, 332), 22);
-  ctx.fillStyle = '#ffffff';
-  ctx.font = '12px Arial';
-  ctx.textAlign = 'left';
-  ctx.textBaseline = 'middle';
+  const support = tpl && Array.isArray(tpl.samples) ? compoundSupportFromSamples(tpl.samples) : null;
+  if (support) drawPreviewInternalAxes(ctx,w,h,support);
   const estimator = sampleEstimatorLabel(estimatorValue);
   const cacheNote = fromCache ? ' · caché' : '';
-  ctx.fillText(`Plantilla compuesta · ${sampleCount} muestra(s) · ${estimator}${cacheNote}`, 14, h - 19);
+  if (el.samplePreviewMeta) {
+    if (support) {
+      const dur = Math.max(0, support.tmax - support.tmin);
+      el.samplePreviewMeta.textContent = `Duración: ${dur.toFixed(2)} s · Rango: ${(support.fmin/1000).toFixed(3)}–${(support.fmax/1000).toFixed(3)} kHz · ${sampleCount} muestra(s) · ${estimator}${cacheNote}`;
+    } else {
+      el.samplePreviewMeta.textContent = `${sampleCount} muestra(s) · ${estimator}${cacheNote}`;
+    }
+  }
 }
 
 function drawPreviewEmpty(ctx, w, h, text) {
@@ -605,6 +891,7 @@ function drawPreviewEmpty(ctx, w, h, text) {
   }
   ctx.fillStyle = '#0f172a';
   ctx.fillRect(0, 0, w, h);
+  if (el.samplePreviewMeta && text) el.samplePreviewMeta.textContent = text;
   if (!text) return;
   ctx.fillStyle = '#cbd5e1';
   ctx.font = '12px Arial';
@@ -614,14 +901,14 @@ function drawPreviewEmpty(ctx, w, h, text) {
 }
 
 function buildCompositePreviewImage(samples, outW, outH, estimator) {
-  if (!samples.length || !state.display || !el.spectrogramCanvas) return null;
-  const source = el.spectrogramCanvas;
+  if (!samples.length || !state.analysisDisplay || !el.analyticCanvas) return null;
+  const source = el.analyticCanvas;
   const support = compoundSupportFromSamples(samples);
   if (!support || !isRoiValid(support)) return null;
 
-  const supportWidth = Math.max(4, Math.round(Math.max(...samples.map(s => Math.abs(timeToX(s.tmax) - timeToX(s.tmin))))));
-  const sy1 = freqToY(support.fmax);
-  const sy2 = freqToY(support.fmin);
+  const supportWidth = Math.max(4, Math.round(Math.max(...samples.map(s => Math.abs(analysisTimeToX(s.tmax) - analysisTimeToX(s.tmin))))));
+  const sy1 = analysisFreqToY(support.fmax);
+  const sy2 = analysisFreqToY(support.fmin);
   const supportHeight = Math.max(4, Math.round(Math.abs(sy2 - sy1)));
 
   const rawPatches = [];
@@ -835,12 +1122,12 @@ function medianByte(values) {
 }
 
 function previewEnergyCentroid(roi) {
-  const source = el.spectrogramCanvas;
+  const source = el.analyticCanvas;
   const ctx = source.getContext('2d', { willReadFrequently: true });
-  const x1 = Math.floor(timeToX(roi.tmin));
-  const x2 = Math.ceil(timeToX(roi.tmax));
-  const y1 = Math.floor(freqToY(roi.fmax));
-  const y2 = Math.ceil(freqToY(roi.fmin));
+  const x1 = Math.floor(analysisTimeToX(roi.tmin));
+  const x2 = Math.ceil(analysisTimeToX(roi.tmax));
+  const y1 = Math.floor(analysisFreqToY(roi.fmax));
+  const y2 = Math.ceil(analysisFreqToY(roi.fmin));
   const x = clamp(Math.min(x1, x2), 0, source.width - 1);
   const y = clamp(Math.min(y1, y2), 0, source.height - 1);
   const w = clamp(Math.abs(x2 - x1), 1, source.width - x);
@@ -1076,8 +1363,8 @@ function applyTemplateToFields(tpl) {
   state.roi = { tmin: tpl.tmin, tmax: tpl.tmax, fmin: tpl.fmin, fmax: tpl.fmax };
   el.roiTmin.value = fmt(tpl.tmin, 3);
   el.roiTmax.value = fmt(tpl.tmax, 3);
-  el.roiFmin.value = fmt(tpl.fmin, 1);
-  el.roiFmax.value = fmt(tpl.fmax, 1);
+  el.roiFmin.value = fmt(tpl.fmin / 1000, 3);
+  el.roiFmax.value = fmt(tpl.fmax / 1000, 3);
   if (el.roiLabel) el.roiLabel.value = displayLabelForTemplate(tpl);
   el.metricSelect.value = tpl.metric || 'coseno';
   setScoreControls(tpl.scoreThreshold ?? 0.85);
@@ -1290,11 +1577,34 @@ function updateSearchSummaryText() {
   return total;
 }
 
+function formatPlayerTime(sec) {
+  const v = Math.max(0, Number(sec) || 0);
+  const m = Math.floor(v / 60);
+  const s = Math.floor(v % 60);
+  return `${m}:${String(s).padStart(2, '0')}`;
+}
+
+function syncCustomPlayer() {
+  if (!el.audioPlayer) return;
+  const d = Number.isFinite(el.audioPlayer.duration) ? el.audioPlayer.duration : (state.duration || 0);
+  const t = Math.max(0, Math.min(d || Infinity, el.audioPlayer.currentTime || 0));
+  if (el.playerTime) el.playerTime.textContent = `${formatPlayerTime(t)} / ${formatPlayerTime(d)}`;
+  if (el.playerSeek) {
+    el.playerSeek.max = String(Math.max(d, 0.01));
+    if (!el.playerSeek.matches(':active')) el.playerSeek.value = String(t);
+  }
+  if (el.btnPlayPause) {
+    el.btnPlayPause.textContent = el.audioPlayer.paused ? '▶' : '❚❚';
+    el.btnPlayPause.setAttribute('aria-label', el.audioPlayer.paused ? 'Reproducir' : 'Pausar');
+  }
+  if (el.btnMute) el.btnMute.textContent = el.audioPlayer.muted ? '🔇' : '🔊';
+}
+
 function ensureWorker() {
   if (state.worker) {
     state.worker.terminate();
   }
-  state.worker = new Worker('src/audio-worker.js');
+  state.worker = new Worker('src/audio-worker.js?v=45.8');
   state.worker.onmessage = onWorkerMessage;
   state.worker.onerror = (err) => {
     hideProcessing();
@@ -1314,25 +1624,23 @@ function onWorkerMessage(ev) {
   }
 
   if (msg.type === 'spectrogram-ready') {
+    state.analysisDisplay = {
+      width: msg.width, height: msg.height, duration: msg.duration, fmin: msg.fmin, fmax: msg.fmax,
+      nFrames: msg.nFrames, nFreq: msg.nFreq, hopLength: msg.hopLength, sampleRate: msg.sampleRate,
+    };
+    const fitPps = visualFitPxPerSec();
+    visualState.pxPerSec = fitPps; // v45 UX: mostrar el audio completo por defecto; +/− profundizan el zoom
     state.display = {
-      width: msg.width,
-      height: msg.height,
-      duration: msg.duration,
-      fmin: msg.fmin,
-      fmax: msg.fmax,
-      nFrames: msg.nFrames,
-      nFreq: msg.nFreq,
-      hopLength: msg.hopLength,
-      sampleRate: msg.sampleRate,
-      freqScale: msg.freqScale || CONFIG.freqScale,
-      colormap: msg.colormap || CONFIG.colormap,
+      width: visualViewportWidth(), virtualWidth: visualStageWidth(), height: visualState.height, duration: msg.duration, fmin: msg.fmin, fmax: msg.fmax,
+      nFrames: msg.nFrames, nFreq: msg.nFreq, hopLength: msg.hopLength, sampleRate: msg.sampleRate,
+      freqScale: visualState.freqScale, colormap: visualState.colormap,
     };
     state.duration = msg.duration;
     el.spectrogramTitle.textContent = `Espectrograma · ${state.file?.name || 'audio cargado'}`;
-    renderSpectrogramImage(msg.imageBuffer, msg.width, msg.height);
-    hideProcessing();
+    renderAnalyticSpectrogramImage(msg.imageBuffer, msg.width, msg.height);
     closeWelcome();
     state.spectrogramReady = true;
+    initializeVisualEngine();
     setStatus('Marca plantilla', 'Arrastra sobre el espectrograma para encerrar el patrón que quieres buscar.');
     setCoach('Marca una plantilla', 'Dale play si quieres ubicar el sonido. Luego arrastra una caja roja sobre la región acústica que deseas usar como plantilla.');
     showToast('Espectrograma listo', 'Ahora arrastra una caja sobre el patrón acústico de interés.');
@@ -1341,21 +1649,7 @@ function onWorkerMessage(ev) {
     return;
   }
 
-  if (msg.type === 'spectrogram-image-ready') {
-    if (state.display) {
-      state.display.width = msg.width;
-      state.display.height = msg.height;
-      state.display.fmin = msg.fmin;
-      state.display.fmax = msg.fmax;
-      state.display.freqScale = msg.freqScale || CONFIG.freqScale;
-      state.display.colormap = msg.colormap || CONFIG.colormap;
-    }
-    renderSpectrogramImage(msg.imageBuffer, msg.width, msg.height);
-    hideProcessing();
-    drawOverlay();
-    showToast('Visualización actualizada', 'Se aplicó la escala/color del espectrograma.');
-    return;
-  }
+  if (msg.type === 'spectrogram-image-ready') { return; }
 
   if (msg.type === 'compound-template-warmed') {
     return;
@@ -1440,35 +1734,43 @@ function enableAfterSpectrogram() {
   updateSearchButtonsState();
   renderTemplateNavigator();
   drawOverlay();
+  if (el.btnFitAll) el.btnFitAll.disabled = false;
+  if (el.btnZoomOut) el.btnZoomOut.disabled = false;
+  if (el.btnZoomIn) el.btnZoomIn.disabled = false;
 }
 
 
 function currentSpectrogramConfig() {
-  CONFIG.freqScale = el.freqScaleSelect?.value || CONFIG.freqScale || 'linear';
-  CONFIG.colormap = el.colormapSelect?.value || CONFIG.colormap || 'magma';
-  return {
-    ...CONFIG,
-    // Mantener la escala temporal amplia del visor original.
-    // El espectrograma puede exceder el ancho visible y se navega con scroll,
-    // mientras el eje de frecuencia permanece fijo.
-    maxDisplayWidth: CONFIG.maxDisplayWidth,
-    freqScale: CONFIG.freqScale,
-    colormap: CONFIG.colormap,
-  };
+  // Motor ANALÍTICO: queda congelado en la representación canónica de v43.
+  // Los controles visuales de v45 nunca modifican esta matriz.
+  return { ...CONFIG, freqScale: 'linear', colormap: 'magma', maxDisplayWidth: CONFIG.maxDisplayWidth };
 }
 
-function applySpectrogramSettings() {
-  if (!state.worker || !state.spectrogramReady) {
-    CONFIG.freqScale = el.freqScaleSelect?.value || CONFIG.freqScale;
-    CONFIG.colormap = el.colormapSelect?.value || CONFIG.colormap;
-    return;
+function readVisualControls() {
+  visualState.freqScale = el.freqScaleSelect?.value || 'linear';
+  visualState.colormap = el.colormapSelect?.value || 'magma_light';
+  if (el.quickFreqScale && el.quickFreqScale.value !== visualState.freqScale) el.quickFreqScale.value = visualState.freqScale;
+  if (el.quickColormap && el.quickColormap.value !== visualState.colormap) el.quickColormap.value = visualState.colormap;
+  visualState.contrast = Number(el.contrastRange?.value ?? 1);
+  visualState.brightness = Number(el.brightnessRange?.value ?? 0);
+  visualState.gamma = Number(el.gammaRange?.value ?? 1);
+  visualState.fftSize = el.visualFftSelect?.value || 'auto';
+  visualState.quality = el.visualQualitySelect?.value || 'alta';
+  if (!visualState.autoHeight) visualState.height = Number(el.visualHeightRange?.value ?? visualState.height ?? 520);
+  if (el.contrastValue) el.contrastValue.textContent = visualState.contrast.toFixed(2);
+  if (el.brightnessValue) el.brightnessValue.textContent = visualState.brightness.toFixed(2);
+  if (el.gammaValue) el.gammaValue.textContent = visualState.gamma.toFixed(2);
+  if (el.visualHeightValue) el.visualHeightValue.textContent = visualState.autoHeight ? `Automática · ${Math.round(visualState.height)} px` : `${Math.round(visualState.height)} px`;
+}
+
+function applySpectrogramSettings({ recompute = false, relayout = false } = {}) {
+  readVisualControls();
+  if (!state.spectrogramReady || !visualState.initialized) return;
+  if (recompute) scheduleVisualRecompute();
+  else {
+    if (relayout) layoutSpectrogramStage();
+    drawAxes(); drawOverlay(); scheduleVisualRender();
   }
-  showProcessing('Actualizando espectrograma', 'Aplicando escala y color...', 25);
-  setStatus('Actualizando', 'Redibujando espectrograma con la nueva configuración.');
-  state.worker.postMessage({
-    type: 'render-spectrogram',
-    config: currentSpectrogramConfig(),
-  });
 }
 
 async function handleFile(file) {
@@ -1477,7 +1779,9 @@ async function handleFile(file) {
   state.file = file;
   if (state.objectUrl) URL.revokeObjectURL(state.objectUrl);
   state.objectUrl = URL.createObjectURL(file);
+  el.audioPlayer.preload = 'auto';
   el.audioPlayer.src = state.objectUrl;
+  el.audioPlayer.load();
   if (el.audioName) el.audioName.textContent = file.name;
   el.spectrogramTitle.textContent = `Espectrograma · ${file.name}`;
   if (el.audioInfo) el.audioInfo.textContent = `${bytesToMb(file.size)} MB · ${file.type || 'audio'}`;
@@ -1504,10 +1808,10 @@ async function handleFile(file) {
     ensureWorker();
     state.worker.postMessage({
       type: 'build-spectrogram',
-      samples: processed,
+      samples: processed.slice(),
       sampleRate: processingSampleRate,
       config: currentSpectrogramConfig(),
-    }, [processed.buffer]);
+    });
   } catch (err) {
     hideProcessing();
     console.error(err);
@@ -1542,28 +1846,365 @@ function resampleLinear(input, inputRate, outputRate) {
   return output;
 }
 
-function renderSpectrogramImage(buffer, width, height) {
+function renderAnalyticSpectrogramImage(buffer, width, height) {
+  const c = el.analyticCanvas;
+  c.width = width; c.height = height;
+  const ctx = c.getContext('2d', { willReadFrequently: true });
+  ctx.putImageData(new ImageData(new Uint8ClampedArray(buffer), width, height), 0, 0);
   el.emptyViewer.hidden = true;
   el.spectrogramStage.hidden = false;
   el.spectrogramViewport.classList.remove('empty');
-
-  for (const c of [el.spectrogramCanvas, el.overlayCanvas]) {
-    c.width = width;
-    c.height = height;
-  }
-
-  // Los ejes se configuran en layoutSpectrogramStage() con alta densidad de píxeles.
-  // No se dejan aquí con el tamaño natural porque el navegador los escala y las letras quedan borrosas.
-
-  const ctx = el.spectrogramCanvas.getContext('2d');
-  const imageData = new ImageData(new Uint8ClampedArray(buffer), width, height);
-  ctx.putImageData(imageData, 0, 0);
-
-  layoutSpectrogramStage();
-  drawAxes();
-  drawOverlay();
-  updatePlayhead(true);
 }
+
+// Alias de compatibilidad con v43: el render analítico queda oculto en v45.
+function renderSpectrogramImage(buffer, width, height) { renderAnalyticSpectrogramImage(buffer, width, height); }
+
+function visualViewportWidth(){
+  return Math.max(320,(el.spectrogramViewport?.clientWidth||900)-CONFIG.freqAxisW);
+}
+function visualFitPxPerSec(){
+  const w=visualViewportWidth();
+  return state.duration>0 ? w/state.duration : 1;
+}
+function visualMaxPxPerSec(){
+  return Math.max(visualFitPxPerSec(),VISUAL_MAX_PX_PER_SEC);
+}
+function visualStageWidth(){
+  const viewW=visualViewportWidth();
+  if(!(state.duration>0)) return viewW;
+  // Ancho virtual del scrollbar. Puede ser muy grande, pero está acotado y no
+  // determina el tamaño del canvas ni la resolución del espectrograma.
+  return Math.max(viewW,Math.min(VISUAL_MAX_VIRTUAL_SCROLL_WIDTH,Math.round(state.duration*Math.max(visualFitPxPerSec(),visualState.pxPerSec))));
+}
+function visualViewDuration(pps=visualState.pxPerSec){
+  return state.duration>0 ? Math.min(state.duration,visualViewportWidth()/Math.max(pps,1e-9)) : 0;
+}
+function visualMaxViewStart(pps=visualState.pxPerSec){
+  return Math.max(0,state.duration-visualViewDuration(pps));
+}
+function visualMaxScrollLeft(virtualWidth=visualStageWidth()){
+  return Math.max(0,virtualWidth-visualViewportWidth());
+}
+function visualViewStartTime(){
+  const maxT=visualMaxViewStart();
+  const maxScroll=visualMaxScrollLeft(visualState.virtualWidth||visualStageWidth());
+  if(!(maxT>0)||!(maxScroll>0)) return 0;
+  return clamp((el.spectrogramViewport?.scrollLeft||0)/maxScroll,0,1)*maxT;
+}
+function scrollLeftForViewStartTime(t0){
+  const maxT=visualMaxViewStart();
+  const maxScroll=visualMaxScrollLeft(visualState.virtualWidth||visualStageWidth());
+  if(!(maxT>0)||!(maxScroll>0)) return 0;
+  return clamp(Number(t0)||0,0,maxT)/maxT*maxScroll;
+}
+function setVisualViewStartTime(t0){
+  if(!el.spectrogramViewport)return;
+  el.spectrogramViewport.scrollLeft=scrollLeftForViewStartTime(t0);
+  syncViewportLayerPosition();
+}
+function physicalTemporalPps(nfft=effectiveVisualNfft()){
+  if(!(state.sampleRate>0)) return Math.max(1,visualState.pxPerSec);
+  // Un hop de nfft/16 es el detalle temporal útil máximo del visor. Por encima
+  // de este nivel seguimos permitiendo zoom geométrico, pero no inventamos
+  // columnas espectrales nuevas entre ventanas físicamente distintas.
+  const minHop=Math.max(1,Math.floor(nfft/16));
+  return Math.max(1,state.sampleRate/minHop);
+}
+function effectiveVisualNfft(){
+  if(String(visualState.fftSize)!=='auto') return Number(visualState.fftSize)||2048;
+  const pps=Math.max(visualFitPxPerSec(),visualState.pxPerSec);
+  let temporalNfft;
+  if(state.sampleRate>=96000){
+    temporalNfft=pps>=5000?256:pps>=1200?512:pps>=300?1024:pps>=80?2048:4096;
+  }else{
+    temporalNfft=pps>=3000?256:pps>=700?512:pps>=170?1024:2048;
+  }
+  const fullSpan=Math.max(1,(state.analysisDisplay?.fmax??state.sampleRate/2)-(state.analysisDisplay?.fmin??0));
+  const visibleSpan=Math.max(1,(state.display?.fmax??fullSpan)-(state.display?.fmin??0));
+  const freqZoom=fullSpan/visibleSpan;
+  let spectralNfft=temporalNfft;
+  if(freqZoom>=16) spectralNfft=Math.max(spectralNfft,16384);
+  else if(freqZoom>=8) spectralNfft=Math.max(spectralNfft,8192);
+  else if(freqZoom>=3.5) spectralNfft=Math.max(spectralNfft,4096);
+  // Compromiso tiempo-frecuencia: en zoom temporal extremo no conviene usar
+  // ventanas enormes aunque también exista zoom vertical.
+  const cap=pps>=20000?1024:pps>=5000?2048:pps>=1000?4096:16384;
+  return Math.max(256,Math.min(spectralNfft,cap));
+}
+function visualCacheConfigKey(nfft=effectiveVisualNfft()){ return `${visualState.epoch}|${nfft}|${visualState.quality}`; }
+function visualCurrentLevel(){
+  const p=Math.max(visualFitPxPerSec(),visualState.pxPerSec,.01);
+  return Math.pow(2,Math.ceil(Math.log2(p)*2)/2);
+}
+function visualTileSpec(level=visualCurrentLevel(),nfft=effectiveVisualNfft()){
+  const naturalDur=Math.max(VISUAL_MIN_DEEP_TILE_SECONDS,VISUAL_TILE_PX/Math.max(level,1e-9));
+  const spectralMaxDur=nfft>=16384?12:nfft>=8192?20:nfft>=4096?45:Infinity;
+  const tileDur=Math.min(naturalDur,spectralMaxDur);
+  const usefulPps=Math.min(level,physicalTemporalPps(nfft));
+  const cols=clamp(Math.ceil(tileDur*usefulPps),64,VISUAL_TILE_PX);
+  return {level,tileDur,cols,nfft,usefulPps};
+}
+function visualColsForTileSpan(spec,span){
+  return clamp(Math.ceil(Math.max(1e-6,span)*spec.usefulPps),32,spec.cols);
+}
+function visualTileKey(spec,index){
+  return `${visualCacheConfigKey(spec.nfft)}|L${spec.level.toFixed(6)}|D${spec.tileDur.toFixed(6)}|T${index}`;
+}
+
+function initializeVisualEngine(){
+  if(visualState.worker){ visualState.worker.terminate(); visualState.worker=null; }
+  visualState.overview=null; visualState.tiles.clear(); visualState.pending.clear(); visualState.requestQueue=[]; visualState.activeRequestKey=null;
+  visualState.workerReady=false; visualState.initialized=true; visualState.paintStart=0; visualState.paintEnd=0; visualState.backgroundWarmScheduled=false;
+  readVisualControls();
+  if(visualState.autoHeight) syncAutoVisualHeight(true);
+  const fit=visualFitPxPerSec(),max=visualMaxPxPerSec(); visualState.pxPerSec=Math.max(fit,Math.min(visualState.pxPerSec,max));
+  syncVisualZoomUi(); layoutSpectrogramStage(true); drawAxes(); drawOverlay();
+  visualState.worker=new Worker('src/visual-worker.js?v=45.8');
+  visualState.worker.onmessage=handleVisualWorkerMessage;
+  visualState.worker.onerror=(err)=>{console.error(err);visualState.activeRequestKey=null;hideProcessing();showToast('Error del visor',err.message||'Falló el motor visual.',7000);};
+  const copy=state.samples ? state.samples.slice() : new Float32Array();
+  visualState.worker.postMessage({type:'init',samples:copy,sampleRate:state.sampleRate,duration:state.duration},[copy.buffer]);
+  updateProcessing('Construyendo vista general multirresolución...',82);
+}
+function handleVisualWorkerMessage(ev){
+  const m=ev.data||{};
+  if(m.type==='ready'){visualState.workerReady=true;requestVisualOverview();pumpVisualQueue();return;}
+  if(m.type==='progress'){updateProcessing(m.text||'Construyendo vista general...',88);return;}
+  if(m.key){visualState.pending.delete(m.key);if(visualState.activeRequestKey===m.key)visualState.activeRequestKey=null;}
+  if(m.type==='error'){console.error(m.message);pumpVisualQueue();return;}
+  if(m.type!=='result'){pumpVisualQueue();return;}
+  if(m.epoch!==visualState.epoch){pumpVisualQueue();return;}
+  const cache={...m,db:new Float32Array(m.db)};
+  if(m.overview){
+    visualState.overview=cache;
+    renderVisualSpectrogram();requestVisibleVisualTiles(true);hideProcessing();
+    showToast('Visor v45.8 listo','Timeline virtual, zoom profundo y carga predictiva activos.');
+    scheduleBackgroundVisualWarmup();
+  }else{
+    cache.bytes=cache.db?.byteLength||0;
+    visualState.tiles.set(m.key,cache);
+    trimVisualTileCache();
+    // Sustituir inmediatamente el fallback por el tile fino recién llegado.
+    scheduleVisualRender(el.audioPlayer&&!el.audioPlayer.paused?18:0);
+  }
+  pumpVisualQueue();
+}
+function trimVisualTileCache(){
+  let bytes=0;for(const c of visualState.tiles.values())bytes+=Number(c.bytes||c.db?.byteLength||0);
+  while(visualState.tiles.size>VISUAL_MAX_TILE_CACHE||bytes>VISUAL_MAX_TILE_CACHE_BYTES){
+    const k=visualState.tiles.keys().next().value;if(k==null)break;
+    const c=visualState.tiles.get(k);bytes-=Number(c?.bytes||c?.db?.byteLength||0);visualState.tiles.delete(k);
+  }
+}
+function pumpVisualQueue(){
+  if(!visualState.workerReady||!visualState.worker||visualState.activeRequestKey)return;
+  while(visualState.requestQueue.length){
+    const job=visualState.requestQueue.shift();
+    if(!visualState.pending.has(job.key))continue;
+    visualState.activeRequestKey=job.key;
+    visualState.worker.postMessage({type:'analyze',id:job.key,key:job.key,epoch:visualState.epoch,start:job.start,end:job.end,cols:job.cols,nfft:job.nfft,quality:job.quality,overview:job.overview});
+    return;
+  }
+}
+function postVisualAnalyze({key,start,end,cols,overview=false,nfft=effectiveVisualNfft(),priority=50,quality=visualState.quality}){
+  if(!visualState.workerReady||!key||end<=start)return;
+  if(visualState.pending.has(key)||visualState.tiles.has(key))return;
+  visualState.pending.add(key);
+  visualState.requestQueue.push({key,start,end,cols:Math.max(8,Math.round(cols)),overview,nfft,quality,priority,seq:++visualState.requestSeq});
+  visualState.requestQueue.sort((a,b)=>b.priority-a.priority||a.seq-b.seq);
+  while(visualState.requestQueue.length>VISUAL_MAX_QUEUED_REQUESTS){
+    const dropped=visualState.requestQueue.pop();
+    if(dropped&&dropped.key!==visualState.activeRequestKey)visualState.pending.delete(dropped.key);
+  }
+  pumpVisualQueue();
+}
+function requestVisualOverview(){
+  if(!visualState.workerReady)return;
+  const cols=Math.max(900,Math.round((el.spectrogramViewport?.clientWidth||900)*1.2));
+  const nfft=effectiveVisualNfft();
+  postVisualAnalyze({key:`overview:${visualCacheConfigKey(nfft)}`,start:0,end:Math.max(state.duration,.001),cols,overview:true,nfft,priority:1000});
+}
+function scheduleBackgroundVisualWarmup(){
+  if(visualState.backgroundWarmScheduled||!visualState.overview)return;
+  visualState.backgroundWarmScheduled=true;
+  window.setTimeout(()=>{
+    if(!visualState.workerReady||!visualState.overview||!(state.duration>0))return;
+    // Precarga ligera: 4–8 bloques que cubren TODO el audio a resolución media.
+    // Usa FFT/quality económicos para que una interacción del usuario nunca quede
+    // esperando detrás de un trabajo pesado de background.
+    const chunks=clamp(Math.ceil(state.duration/20),4,8);
+    const tileDur=state.duration/chunks;
+    const nfft=Math.min(1024,visualState.overview.nfft||1024);
+    for(let i=0;i<chunks;i++){
+      const start=i*tileDur,end=i===chunks-1?state.duration:(i+1)*tileDur;
+      const cols=clamp(Math.ceil((end-start)*24),256,512);
+      const key=`${visualState.epoch}|${nfft}|rapida|warm|C${chunks}|T${i}`;
+      postVisualAnalyze({key,start,end,cols,nfft,priority:4,quality:'rapida'});
+    }
+  },700);
+}
+function pruneQueuedInteractiveVisualRequests(){
+  if(!visualState.requestQueue.length)return;
+  const keep=[];
+  for(const job of visualState.requestQueue){
+    if(job.overview||job.priority<100){keep.push(job);continue;}
+    visualState.pending.delete(job.key);
+  }
+  visualState.requestQueue=keep;
+}
+function requestVisibleVisualTiles(immediate=false){
+  clearTimeout(visualState.tileTimer);
+  const run=()=>{
+    if(!visualState.workerReady||!state.duration)return;
+    if(immediate)pruneQueuedInteractiveVisualRequests();
+    const fit=visualFitPxPerSec(),targetNfft=effectiveVisualNfft();
+    const needsSpectralDetail=Boolean(visualState.overview&&visualState.overview.nfft!==targetNfft);
+    if(visualState.pxPerSec<=fit*1.06&&!needsSpectralDetail)return;
+    const spec=visualTileSpec(Math.max(fit,visualCurrentLevel()),targetNfft);
+    const tileQuality=targetNfft>=16384?'rapida':targetNfft>=8192?'media':visualState.quality;
+    const t0=visualViewStartTime(),t1=Math.min(state.duration,t0+visualViewDuration());
+    const maxI=Math.max(0,Math.ceil(state.duration/spec.tileDur)-1);
+    const i0=clamp(Math.floor(t0/spec.tileDur),0,maxI);
+    const i1=clamp(Math.floor(Math.max(t0,t1-1e-12)/spec.tileDur),0,maxI);
+    const center=(i0+i1)/2;
+    for(let i=i0;i<=i1;i++){
+      const start=i*spec.tileDur,end=Math.min(state.duration,(i+1)*spec.tileDur);
+      postVisualAnalyze({key:visualTileKey(spec,i),start,end,cols:visualColsForTileSpan(spec,end-start),nfft:targetNfft,priority:260-Math.abs(i-center)*4,quality:tileQuality});
+    }
+    const playing=Boolean(el.audioPlayer&&!el.audioPlayer.paused&&!el.audioPlayer.ended);
+    const rate=Math.max(.5,Number(el.audioPlayer?.playbackRate||1));
+    const ahead=playing?Math.min(18,Math.max(8,Math.ceil(8*rate))):3;
+    const behind=playing?2:2;
+    for(let d=1;d<=ahead;d++){
+      const i=i1+d;if(i>maxI)break;
+      const start=i*spec.tileDur,end=Math.min(state.duration,(i+1)*spec.tileDur);
+      postVisualAnalyze({key:visualTileKey(spec,i),start,end,cols:visualColsForTileSpan(spec,end-start),nfft:targetNfft,priority:210-d*5,quality:tileQuality});
+    }
+    for(let d=1;d<=behind;d++){
+      const i=i0-d;if(i<0)break;
+      const start=i*spec.tileDur,end=Math.min(state.duration,(i+1)*spec.tileDur);
+      postVisualAnalyze({key:visualTileKey(spec,i),start,end,cols:visualColsForTileSpan(spec,end-start),nfft:targetNfft,priority:120-d*5,quality:tileQuality});
+    }
+  };
+  if(immediate)run();else visualState.tileTimer=setTimeout(run,35);
+}
+function clearVisualSpectralCaches(){
+  visualState.epoch++;visualState.overview=null;visualState.tiles.clear();visualState.pending.clear();visualState.requestQueue=[];visualState.activeRequestKey=null;visualState.paintStart=0;visualState.paintEnd=0;visualState.backgroundWarmScheduled=false;
+}
+function scheduleVisualRecompute(){clearTimeout(visualState.recomputeTimer);visualState.recomputeTimer=setTimeout(()=>{clearVisualSpectralCaches();requestVisualOverview();},180);}
+function scheduleVisualRender(delay=16){clearTimeout(visualState.renderTimer);visualState.renderTimer=setTimeout(renderVisualSpectrogram,Math.max(0,delay));}
+function bestVisualCacheForTime(t){
+  const targetNfft=effectiveVisualNfft();
+  const targetPps=Math.min(Math.max(1,visualState.pxPerSec),physicalTemporalPps(targetNfft));
+  let best=visualState.overview||null,bestScore=-Infinity;
+  const scoreCache=(c)=>{
+    if(!c||t<c.start-1e-9||t>c.end+1e-9)return -Infinity;
+    const temporal=Math.min(1,Math.max(0,c.pps||0)/targetPps);
+    const spectral=Math.min(1,Math.max(0,c.nfft||0)/targetNfft);
+    const exactNfft=c.nfft===targetNfft?8:0;
+    return temporal*72+spectral*24+exactNfft+Math.log2(1+Math.max(0,c.pps||0))*.25;
+  };
+  if(best)bestScore=scoreCache(best);
+  for(const c of visualState.tiles.values()){
+    const s=scoreCache(c);if(s>bestScore){best=c;bestScore=s;}
+  }
+  return best||visualState.overview;
+}
+function visualSourceRow(cache,freq){return clamp(Math.round(freq/(state.sampleRate/cache.nfft)),0,cache.rows-1);}
+function renderVisualSpectrogram(){
+  if(!visualState.overview||!state.display)return;
+  readVisualControls();
+  const viewW=visualViewportWidth();
+  if(state.display.width!==viewW){layoutSpectrogramStage(false);drawAxes();drawOverlay();}
+  state.display.height=visualState.height;state.display.freqScale=visualState.freqScale;state.display.colormap=visualState.colormap;
+  syncViewportLayerPosition();
+  const W=Math.max(1,Math.round(state.display.width));
+  const H=Math.max(1,Math.round(visualState.height));
+  const t0=visualViewStartTime();
+  const ctx=el.spectrogramCanvas.getContext('2d');
+  const bg=(window.V45_COLORMAPS||{}).color ? window.V45_COLORMAPS.color(visualState.colormap,0):[255,255,255];
+  ctx.fillStyle=`rgb(${bg[0]},${bg[1]},${bg[2]})`;ctx.fillRect(0,0,W,H);
+  const img=ctx.createImageData(W,H),baseMin=visualState.overview.vmin,baseMax=visualState.overview.vmax,range=Math.max(1e-6,baseMax-baseMin);
+  const sources=new Array(W),sourceCols=new Int32Array(W);
+  for(let x=0;x<W;x++){
+    const t=clamp(t0+(x+.5)/Math.max(visualState.pxPerSec,1e-9),0,state.duration);
+    const c=bestVisualCacheForTime(t)||visualState.overview;sources[x]=c;
+    sourceCols[x]=clamp(Math.floor((t-c.start)/Math.max(1e-9,c.end-c.start)*c.cols),0,c.cols-1);
+  }
+  for(let y=0;y<H;y++){
+    const freq=yToFreq((y/H)*state.display.height);
+    for(let x=0;x<W;x++){
+      const c=sources[x],row=visualSourceRow(c,freq),raw=c.db[sourceCols[x]*c.rows+row];
+      let norm=(raw-baseMin)/range; norm=(norm-.5)*visualState.contrast+.5+visualState.brightness; norm=Math.pow(clamp(norm,0,1),visualState.gamma);
+      const rgb=(window.V45_COLORMAPS||{}).color ? window.V45_COLORMAPS.color(visualState.colormap,norm):[Math.round(norm*255),Math.round(norm*255),Math.round(norm*255)];
+      const idx=(y*W+x)*4;img.data[idx]=rgb[0];img.data[idx+1]=rgb[1];img.data[idx+2]=rgb[2];img.data[idx+3]=255;
+    }
+  }
+  ctx.putImageData(img,0,0);
+  visualState.paintStart=t0; visualState.paintEnd=Math.min(state.duration,t0+visualViewDuration());
+  drawAxes();drawOverlay();updatePlayhead(false);updateViewRangeLabel();
+}
+function visualZoomSliderValue(pps=visualState.pxPerSec){
+  const fit=Math.max(1e-9,visualFitPxPerSec()),max=Math.max(fit,visualMaxPxPerSec());
+  if(max<=fit*(1+1e-9))return 0;
+  return clamp(Math.log(Math.max(fit,pps)/fit)/Math.log(max/fit),0,1);
+}
+function visualZoomFromSlider(value){
+  const fit=Math.max(1e-9,visualFitPxPerSec()),max=Math.max(fit,visualMaxPxPerSec());
+  return fit*Math.pow(max/fit,clamp(Number(value)||0,0,1));
+}
+function syncVisualZoomUi(){
+  const fit=visualFitPxPerSec(),max=visualMaxPxPerSec();visualState.pxPerSec=clamp(visualState.pxPerSec,fit,max);
+  if(el.pxPerSecRange){
+    // El slider es logarítmico: da control fino cerca de "Ver todo" y permite
+    // alcanzar 100 000 px/s sin comprimir toda la zona útil en unos pocos píxeles.
+    el.pxPerSecRange.min='0';el.pxPerSecRange.max='1';el.pxPerSecRange.step='0.001';el.pxPerSecRange.value=String(visualZoomSliderValue(visualState.pxPerSec));
+  }
+  const p=visualState.pxPerSec;
+  const txt=p<1?p.toFixed(3):p<10?p.toFixed(2):p<1000?p.toFixed(1):Math.round(p).toLocaleString('es-EC');
+  if(el.pxPerSecValue)el.pxPerSecValue.textContent=`${txt} px/s`;if(el.zoomLabel)el.zoomLabel.textContent=`${txt} px/s`;
+}
+function setVisualZoom(next,anchorTime=null){
+  if(!state.display)return;
+  const old=Math.max(visualState.pxPerSec,1e-9);
+  const oldStart=visualViewStartTime(),oldDur=visualViewDuration(old);
+  const anchor=clamp(anchorTime==null?oldStart+oldDur/2:Number(anchorTime),0,state.duration);
+  const frac=oldDur>0?clamp((anchor-oldStart)/oldDur,0,1):.5;
+  const fit=visualFitPxPerSec(),max=visualMaxPxPerSec();
+  visualState.pxPerSec=clamp(next,fit,max);syncVisualZoomUi();
+  layoutSpectrogramStage(false);
+  const newDur=visualViewDuration();
+  let newStart=clamp(anchor-frac*newDur,0,visualMaxViewStart());
+  if(oldStart<=1e-6&&anchorTime!=null&&anchor<=oldDur*.15)newStart=0;
+  setVisualViewStartTime(newStart);
+  drawAxes();drawOverlay();renderVisualSpectrogram();requestVisibleVisualTiles(true);
+}
+function fitVisualAll(){
+  visualState.pxPerSec=visualFitPxPerSec();syncVisualZoomUi();state.display.fmin=state.analysisDisplay.fmin;state.display.fmax=state.analysisDisplay.fmax;
+  layoutSpectrogramStage(false);setVisualViewStartTime(0);drawAxes();drawOverlay();renderVisualSpectrogram();requestVisibleVisualTiles(true);
+}
+function applyTimeInterval(a,b){
+  let t0=clamp(Math.min(a,b),0,state.duration),t1=clamp(Math.max(a,b),0,state.duration);
+  if(t1-t0<.0001)return;
+  const viewW=visualViewportWidth();
+  visualState.pxPerSec=clamp(viewW/(t1-t0),visualFitPxPerSec(),visualMaxPxPerSec());
+  syncVisualZoomUi();layoutSpectrogramStage(false);setVisualViewStartTime(t0);
+  drawAxes();drawOverlay();renderVisualSpectrogram();requestVisibleVisualTiles(true);
+}
+function applyFreqRange(a,b){
+  if(!state.analysisDisplay)return;
+  let low=clamp(Math.min(a,b),state.analysisDisplay.fmin,state.analysisDisplay.fmax),high=clamp(Math.max(a,b),state.analysisDisplay.fmin,state.analysisDisplay.fmax);
+  if(high-low<1)return;
+  state.display.fmin=low;state.display.fmax=high;drawAxes();drawOverlay();renderVisualSpectrogram();requestVisibleVisualTiles(true);drawSamplePreview();
+}
+function updateViewRangeLabel(){
+  if(!state.display||!el.viewRangeLabel)return;
+  const a=visualViewStartTime(),b=Math.min(state.duration,a+visualViewDuration());
+  el.viewRangeLabel.textContent=`${formatAxisTime(a,true)} – ${formatAxisTime(b,true)}`;
+}
+function analysisTimeToX(t){const d=state.analysisDisplay;return d?(t/d.duration)*d.width:0;}
+function analysisFreqToY(f){const d=state.analysisDisplay;if(!d)return 0;return ((d.fmax-f)/Math.max(1e-9,d.fmax-d.fmin))*d.height;}
+
 
 function setupHiDpiCanvas(canvas, cssWidth, cssHeight) {
   const rawDpr = window.devicePixelRatio || 1;
@@ -1579,6 +2220,24 @@ function setupHiDpiCanvas(canvas, cssWidth, cssHeight) {
   return safeDpr;
 }
 
+function visualAutoHeight(){
+  const viewportH = Math.max(0, el.spectrogramViewport?.clientHeight || 0);
+  const axisHeaderH = CONFIG.timeAxisH + (CONFIG.freqTitleH || 0);
+  if (viewportH > axisHeaderH + 180) return Math.max(260, Math.floor(viewportH - axisHeaderH - 1));
+  const cardH = Math.max(0, document.querySelector('.spectrogram-card')?.clientHeight || 0);
+  return Math.max(300, Math.min(680, Math.floor(cardH * 0.62) || 520));
+}
+
+function syncAutoVisualHeight(force=false){
+  if (!visualState.autoHeight && !force) return false;
+  const next = visualAutoHeight();
+  if (!(next > 0) || Math.abs(next - visualState.height) < 2) return false;
+  visualState.height = next;
+  if (el.visualHeightRange) el.visualHeightRange.value = String(clamp(next, Number(el.visualHeightRange.min||300), Number(el.visualHeightRange.max||760)));
+  if (el.visualHeightValue) el.visualHeightValue.textContent = `Automática · ${Math.round(next)} px`;
+  return true;
+}
+
 function resetHiDpiContext(ctx, canvas, cssWidth, cssHeight) {
   const dpr = Number(canvas.dataset.dpr || 1);
   ctx.setTransform(1, 0, 0, 1, 0, 0);
@@ -1587,52 +2246,43 @@ function resetHiDpiContext(ctx, canvas, cssWidth, cssHeight) {
   return { dpr, W: cssWidth, H: cssHeight };
 }
 
-function layoutSpectrogramStage() {
+function syncViewportLayerPosition(){
+  if(!state.display||!el.spectrogramViewport)return;
+  const maxScroll=visualMaxScrollLeft(visualState.virtualWidth||visualStageWidth());
+  const scroll=clamp(el.spectrogramViewport.scrollLeft||0,0,maxScroll);
+  // Compensamos el scroll con transform (compositor) en vez de relayout por `left`.
+  // El CSS conserva left=freqAxisW; translateX(scroll) neutraliza el desplazamiento
+  // del contenedor y mantiene canvas/regla temporal fijos en el viewport.
+  const tx=`translate3d(${scroll}px,0,0)`;
+  if(el.canvasLayer)el.canvasLayer.style.transform=tx;
+  if(el.timeAxisCanvas)el.timeAxisCanvas.style.transform=tx;
+}
+
+function layoutSpectrogramStage(recalcAutoHeight = true) {
   if (!state.display) return;
-  const width = state.display.width;
-  const naturalHeight = state.display.height;
-
-  // El visor usa todo el alto útil: espectrograma + eje temporal + barra horizontal.
-  // clientHeight ya descuenta la barra horizontal nativa; no restamos margen extra.
-  const viewportH = Math.max(260, el.spectrogramViewport.clientHeight || naturalHeight + CONFIG.timeAxisH);
-  const availableForSpec = Math.max(220, viewportH - CONFIG.timeAxisH);
-  const visualHeight = availableForSpec;
-
-  state.visualHeight = visualHeight;
-  state.visualScaleY = visualHeight / Math.max(1, naturalHeight);
-
-  el.spectrogramStage.style.width = `${CONFIG.freqAxisW + width}px`;
-  el.spectrogramStage.style.height = `${visualHeight + CONFIG.timeAxisH}px`;
-
-  el.canvasLayer.style.width = `${width}px`;
-  el.canvasLayer.style.height = `${visualHeight}px`;
-
-  for (const c of [el.spectrogramCanvas, el.overlayCanvas]) {
-    c.style.width = `${width}px`;
-    c.style.height = `${visualHeight}px`;
-  }
-
-  el.freqAxisCanvas.style.width = `${CONFIG.freqAxisW}px`;
-  el.freqAxisCanvas.style.height = `${visualHeight}px`;
-  setupHiDpiCanvas(el.freqAxisCanvas, CONFIG.freqAxisW, visualHeight);
-
-  el.timeAxisCanvas.style.width = `${width}px`;
-  el.timeAxisCanvas.style.height = `${CONFIG.timeAxisH}px`;
-  el.timeAxisCanvas.style.top = `${visualHeight}px`;
-  setupHiDpiCanvas(el.timeAxisCanvas, width, CONFIG.timeAxisH);
-
-  el.playhead.style.height = `${visualHeight}px`;
+  const virtualWidth = visualStageWidth();
+  const viewW = visualViewportWidth();
+  if (recalcAutoHeight) syncAutoVisualHeight();
+  const visualHeight = Math.round(visualState.height || 520);
+  visualState.virtualWidth=virtualWidth;visualState.viewportWidth=viewW;
+  state.display.width = viewW; state.display.virtualWidth=virtualWidth; state.display.height = visualHeight; state.visualHeight=visualHeight; state.visualScaleY=1;
+  el.spectrogramStage.style.width = `${CONFIG.freqAxisW + virtualWidth}px`;
+  const axisHeaderH = CONFIG.timeAxisH + (CONFIG.freqTitleH || 0);
+  el.spectrogramStage.style.height = `${axisHeaderH + visualHeight}px`;
+  el.canvasLayer.style.top = `${axisHeaderH}px`;
+  el.canvasLayer.style.width = `${viewW}px`; el.canvasLayer.style.height = `${visualHeight}px`;
+  for (const c of [el.spectrogramCanvas, el.overlayCanvas]) { c.width=viewW; c.height=visualHeight; c.style.width=`${viewW}px`; c.style.height=`${visualHeight}px`; }
+  el.freqAxisCanvas.style.width=`${CONFIG.freqAxisW}px`; el.freqAxisCanvas.style.height=`${visualHeight}px`; el.freqAxisCanvas.style.top=`${axisHeaderH}px`; setupHiDpiCanvas(el.freqAxisCanvas,CONFIG.freqAxisW,visualHeight);
+  el.timeAxisCanvas.style.width=`${viewW}px`; el.timeAxisCanvas.style.height=`${CONFIG.timeAxisH}px`; el.timeAxisCanvas.style.top=`0px`; setupHiDpiCanvas(el.timeAxisCanvas,viewW,CONFIG.timeAxisH);
+  el.playhead.style.height=`${visualHeight}px`;
+  const maxScroll=visualMaxScrollLeft(virtualWidth);
+  if(el.spectrogramViewport.scrollLeft>maxScroll)el.spectrogramViewport.scrollLeft=maxScroll;
+  syncViewportLayerPosition();
+  syncVisualZoomUi();
 }
 
-function timeToX(t) {
-  if (!state.display) return 0;
-  return (t / state.display.duration) * state.display.width;
-}
-
-function xToTime(x) {
-  if (!state.display) return 0;
-  return (x / state.display.width) * state.display.duration;
-}
+function timeToX(t) { return (clamp(Number(t)||0,0,state.duration)-visualViewStartTime()) * visualState.pxPerSec; }
+function xToTime(x) { return clamp(visualViewStartTime()+(Number(x)||0)/Math.max(visualState.pxPerSec,1e-9),0,state.duration); }
 
 function hzToMel(hz) {
   return 2595 * Math.log10(1 + Math.max(0, hz) / 700);
@@ -1641,32 +2291,20 @@ function hzToMel(hz) {
 function melToHz(mel) {
   return 700 * (Math.pow(10, mel / 2595) - 1);
 }
+function hzToVisualLog(hz){ return Math.log1p(Math.max(0,hz)/100); }
+function visualLogToHz(v){ return 100 * Math.expm1(v); }
 
 function freqToY(f) {
-  if (!state.display) return 0;
-  const f0 = state.display.fmin;
-  const f1 = state.display.fmax;
-  if (state.display.freqScale === 'mel') {
-    const m0 = hzToMel(f0);
-    const m1 = hzToMel(f1);
-    return ((m1 - hzToMel(f)) / Math.max(m1 - m0, 1e-9)) * state.display.height;
-  }
-  const span = f1 - f0;
-  return ((f1 - f) / span) * state.display.height;
+  if(!state.display)return 0;const f0=state.display.fmin,f1=state.display.fmax,H=state.display.height;
+  if(visualState.freqScale==='mel'){const m0=hzToMel(f0),m1=hzToMel(f1);return ((m1-hzToMel(f))/Math.max(m1-m0,1e-9))*H;}
+  if(visualState.freqScale==='log'){const l0=hzToVisualLog(f0),l1=hzToVisualLog(f1);return ((l1-hzToVisualLog(f))/Math.max(l1-l0,1e-9))*H;}
+  return ((f1-f)/Math.max(f1-f0,1e-9))*H;
 }
-
 function yToFreq(y) {
-  if (!state.display) return 0;
-  const f0 = state.display.fmin;
-  const f1 = state.display.fmax;
-  if (state.display.freqScale === 'mel') {
-    const m0 = hzToMel(f0);
-    const m1 = hzToMel(f1);
-    const m = m1 - (y / state.display.height) * (m1 - m0);
-    return melToHz(m);
-  }
-  const span = f1 - f0;
-  return f1 - (y / state.display.height) * span;
+  if(!state.display)return 0;const f0=state.display.fmin,f1=state.display.fmax,H=state.display.height;
+  if(visualState.freqScale==='mel'){const m0=hzToMel(f0),m1=hzToMel(f1),m=m1-(y/Math.max(1,H))*(m1-m0);return melToHz(m);}
+  if(visualState.freqScale==='log'){const l0=hzToVisualLog(f0),l1=hzToVisualLog(f1),v=l1-(y/Math.max(1,H))*(l1-l0);return visualLogToHz(v);}
+  return f1-(y/Math.max(1,H))*(f1-f0);
 }
 
 function drawAxes() {
@@ -1675,129 +2313,137 @@ function drawAxes() {
   drawFreqAxis();
 }
 
+function niceStep(raw) {
+  if (!(raw > 0)) return 1;
+  const pow = Math.pow(10, Math.floor(Math.log10(raw)));
+  const x = raw / pow;
+  const nice = x <= 1 ? 1 : x <= 2 ? 2 : x <= 2.5 ? 2.5 : x <= 5 ? 5 : 10;
+  return nice * pow;
+}
+
+function formatAxisTime(sec, compact=false, step=null) {
+  sec=Math.max(0,Number(sec)||0);
+  const hasStep=step!==null&&step!==undefined&&Number.isFinite(Number(step));
+  const sStep=hasStep?Number(step):null;
+  const decimals=hasStep ? (sStep<0.1?2:sStep<1?1:0) : (visualState.pxPerSec>=500?2:visualState.pxPerSec>=90?1:0);
+  if(sec<1e-9) return decimals ? (0).toFixed(decimals) : '0';
+  if(sec>=60){
+    const m=Math.floor(sec/60), s=sec-m*60;
+    if(decimals){
+      const ss=s.toFixed(decimals).padStart(3+decimals,'0');
+      return `${m}:${ss}`;
+    }
+    return `${m}:${String(Math.round(s)).padStart(2,'0')}`;
+  }
+  return decimals ? sec.toFixed(decimals) : `${Math.round(sec)}`;
+}
+
 function drawTimeAxis() {
   const ctx = el.timeAxisCanvas.getContext('2d');
-  const W = state.display.width;
-  const H = CONFIG.timeAxisH;
+  const W = state.display.width, H = CONFIG.timeAxisH;
   resetHiDpiContext(ctx, el.timeAxisCanvas, W, H);
-
-  ctx.fillStyle = '#f8fafc';
-  ctx.fillRect(0, 0, W, H);
-  ctx.strokeStyle = '#cbd5e1';
-  ctx.lineWidth = 1;
-  ctx.beginPath();
-  ctx.moveTo(0, 0.5);
-  ctx.lineTo(W, 0.5);
-  ctx.stroke();
-
-  ctx.fillStyle = '#334155';
-  ctx.font = '12px Inter, Arial, sans-serif';
-  ctx.textBaseline = 'top';
-  const step = chooseTimeStep(state.display.duration);
-  for (let t = 0; t <= state.display.duration + 1e-9; t += step) {
-    const x = timeToX(t);
-    ctx.strokeStyle = '#cbd5e1';
-    ctx.beginPath();
-    ctx.moveTo(x + 0.5, 0);
-    ctx.lineTo(x + 0.5, 7);
-    ctx.stroke();
-
-    if (x < 22) ctx.textAlign = 'left';
-    else if (x > W - 28) ctx.textAlign = 'right';
-    else ctx.textAlign = 'center';
-    ctx.fillText(prettyTime(t), clamp(x, 2, W - 2), 10);
+  ctx.fillStyle='#ffffff';ctx.fillRect(0,0,W,H);
+  ctx.strokeStyle='#e4eaf2';ctx.lineWidth=1;ctx.beginPath();ctx.moveTo(0,H-.5);ctx.lineTo(W,H-.5);ctx.stroke();
+  const viewW=state.display.width||visualViewportWidth();
+  const visibleSec=Math.max(1e-6,visualViewDuration());
+  const major=Math.max(.01,niceStep(visibleSec/Math.max(5,Math.floor(viewW/95))));
+  const minor=major/5;
+  const viewStart=visualViewStartTime(),viewEnd=Math.min(state.duration,viewStart+visibleSec);
+  const firstTick=Math.max(0,Math.floor(viewStart/minor)*minor);
+  const labelY = 13;
+  ctx.font='600 11px Inter, Arial, sans-serif';ctx.textBaseline='top';ctx.fillStyle='#334155';
+  for(let t=firstTick;t<=viewEnd+minor*.5;t+=minor){
+    const x=timeToX(t); if(x<-2||x>W+2)continue; const isMajor=Math.abs((t/major)-Math.round(t/major))<1e-5;
+    ctx.strokeStyle=isMajor?'#b8c4d3':'#ced8e4';
+    ctx.lineWidth=isMajor?1.0:0.8;
+    ctx.beginPath();ctx.moveTo(x+.5,H-(isMajor?5:3));ctx.lineTo(x+.5,H);ctx.stroke();
+    if(isMajor){ctx.textAlign=x<16?'left':x>W-16?'right':'center';ctx.fillStyle='#475569';ctx.fillText(formatAxisTime(t,false,major),clamp(x,2,W-2),labelY);}
   }
+  if(state.ruleDrag && state.ruleDrag.type==='time'){
+    const a=clamp(state.ruleDrag.start||0,0,W), b=clamp((state.ruleDrag.current??a),0,W);
+    const x0=Math.min(a,b), x1=Math.max(a,b), mid=(x0+x1)/2;
+    ctx.save();
+    ctx.fillStyle='rgba(37,99,235,.10)'; ctx.fillRect(x0,0,Math.max(1,x1-x0),H-1);
+    ctx.strokeStyle='rgba(37,99,235,.70)'; ctx.lineWidth=1.2; ctx.beginPath(); ctx.moveTo(x0+.5,0); ctx.lineTo(x0+.5,H); ctx.moveTo(x1+.5,0); ctx.lineTo(x1+.5,H); ctx.stroke();
+    ctx.fillStyle='#2563eb'; ctx.fillRect(x0-1.5,H-10,3,10); ctx.fillRect(x1-1.5,H-10,3,10);
+    ctx.fillStyle='#1d4ed8'; ctx.textAlign='center'; ctx.font='600 10px Inter, Arial, sans-serif'; ctx.fillText(`${prettyTime(xToTime(x0))} – ${prettyTime(xToTime(x1))}`, mid, 1);
+    ctx.restore();
+  }
+}
+
+function freqAxisStep() {
+  const span=Math.max(1,state.display.fmax-state.display.fmin);
+  const targetCount=Math.max(7,Math.floor((state.visualHeight||520)/36));
+  return niceStep(span/targetCount);
+}
+
+function formatFreqTick(hz){
+  return (Math.max(0,Number(hz)||0)/1000).toFixed(3);
 }
 
 function drawFreqAxis() {
-  const ctx = el.freqAxisCanvas.getContext('2d');
-  const W = CONFIG.freqAxisW;
-  const H = state.visualHeight || state.display.height;
-  const scaleY = H / Math.max(1, state.display.height);
-  resetHiDpiContext(ctx, el.freqAxisCanvas, W, H);
-
-  ctx.fillStyle = '#f8fafc';
-  ctx.fillRect(0, 0, W, H);
-  ctx.strokeStyle = '#cbd5e1';
-  ctx.lineWidth = 1;
-  ctx.beginPath();
-  ctx.moveTo(W - 0.5, 0);
-  ctx.lineTo(W - 0.5, H);
-  ctx.stroke();
-
-  ctx.fillStyle = '#334155';
-  ctx.font = '11.5px Inter, Arial, sans-serif';
-  ctx.textAlign = 'right';
-  ctx.textBaseline = 'middle';
-
-  const step = chooseFreqStep();
-  const ticks = [];
-  for (let f = state.display.fmin; f <= state.display.fmax + 1e-9; f += step) ticks.push(f);
-  if (!ticks.some(f => Math.abs(f - state.display.fmax) < 1e-6)) ticks.push(state.display.fmax);
-
-  for (const f of ticks) {
-    const yRawNatural = freqToY(f);
-    const yRaw = yRawNatural * scaleY;
-    const y = clamp(yRaw, 12, H - 12);
-    ctx.strokeStyle = '#cbd5e1';
-    ctx.beginPath();
-    ctx.moveTo(W - 7, yRaw + 0.5);
-    ctx.lineTo(W, yRaw + 0.5);
-    ctx.stroke();
-    ctx.fillStyle = '#334155';
-    ctx.fillText(prettyFreq(f), W - 9, y);
+  const ctx=el.freqAxisCanvas.getContext('2d');
+  const W=CONFIG.freqAxisW,H=state.visualHeight||state.display.height;
+  resetHiDpiContext(ctx,el.freqAxisCanvas,W,H);
+  ctx.fillStyle='#fff';ctx.fillRect(0,0,W,H);
+  ctx.strokeStyle='#e4eaf2';ctx.beginPath();ctx.moveTo(W-.5,0);ctx.lineTo(W-.5,H);ctx.stroke();
+  ctx.font='600 10.5px Inter, Arial, sans-serif';ctx.textAlign='right';ctx.textBaseline='middle';ctx.fillStyle='#475569';
+  const step=freqAxisStep();
+  const minor=step/2;
+  const firstMinor=Math.ceil(state.display.fmin/minor-1e-9)*minor;
+  for(let f=firstMinor;f<=state.display.fmax+minor*.1;f+=minor){
+    const y=freqToY(f); if(y<2||y>H-2)continue;
+    const isMajor=Math.abs((f/step)-Math.round(f/step))<1e-5;
+    ctx.strokeStyle=isMajor?'#b8c4d3':'#d7e0ea';
+    ctx.lineWidth=isMajor?1.0:0.8;
+    ctx.beginPath();ctx.moveTo(isMajor?W-4:W-2,y+.5);ctx.lineTo(W,y+.5);ctx.stroke();
+    if(isMajor && y>=6 && y<=H-6){ctx.fillStyle='#475569';ctx.fillText(formatFreqTick(f),W-4,y);}
   }
+  if(visualState.freqScale==='linear' && state.display.fmin<=1){
+    ctx.strokeStyle='#b8c4d3'; ctx.lineWidth=1;
+    ctx.beginPath(); ctx.moveTo(W-4,H-1.5); ctx.lineTo(W,H-1.5); ctx.stroke();
+    ctx.fillStyle='#475569'; ctx.textAlign='right'; ctx.textBaseline='middle';
+    // Mantener el 0 completamente dentro del lienzo, pero pegado a su marca inferior.
+    ctx.fillText('0.000',W-4,H-8);
+  }
+  if(state.ruleDrag && state.ruleDrag.type==='freq'){
+    const a=clamp(state.ruleDrag.start||0,0,H), b=clamp((state.ruleDrag.current??a),0,H);
+    const y0=Math.min(a,b), y1=Math.max(a,b), mid=(y0+y1)/2;
+    ctx.save();
+    ctx.fillStyle='rgba(37,99,235,.10)'; ctx.fillRect(0,y0,W-1,Math.max(1,y1-y0));
+    ctx.strokeStyle='rgba(37,99,235,.72)'; ctx.lineWidth=1.2; ctx.beginPath(); ctx.moveTo(0,y0+.5); ctx.lineTo(W,y0+.5); ctx.moveTo(0,y1+.5); ctx.lineTo(W,y1+.5); ctx.stroke();
+    ctx.fillStyle='#2563eb'; ctx.fillRect(W-10,y0-1.5,10,3); ctx.fillRect(W-10,y1-1.5,10,3);
+    ctx.save(); ctx.translate(8, mid); ctx.rotate(-Math.PI/2); ctx.textAlign='center'; ctx.font='600 10px Inter, Arial, sans-serif'; ctx.fillStyle='#1d4ed8';
+    const fTop=yToFreq(y0), fBottom=yToFreq(y1); ctx.fillText(`${prettyFreq(fBottom)} – ${prettyFreq(fTop)}`,0,0); ctx.restore();
+    ctx.restore();
+  }
+}
 
-  ctx.save();
-  ctx.translate(12, H / 2);
-  ctx.rotate(-Math.PI / 2);
-  ctx.fillStyle = '#64748b';
-  ctx.font = '11px Inter, Arial, sans-serif';
-  ctx.textAlign = 'center';
-  ctx.textBaseline = 'middle';
-  ctx.fillText('Frecuencia', 0, 0);
+function chooseTimeStep(duration) { return niceStep(Math.max(.01,duration)/8); }
+function chooseFreqStep() { return freqAxisStep(); }
+function prettyTime(sec) { return formatAxisTime(sec,true); }
+function prettyFreq(hz) { return `${formatFreqTick(hz)} kHz`; }
+
+
+function drawScientificGrid(ctx){
+  if(!state.display)return;
+  const viewW=state.display.width||visualViewportWidth();
+  const visibleSec=Math.max(1e-6,visualViewDuration());
+  const tStep=Math.max(.01,niceStep(visibleSec/Math.max(4,Math.floor(viewW/95))));
+  const viewStart=visualViewStartTime(),viewEnd=Math.min(state.duration,viewStart+visibleSec);
+  ctx.save();ctx.lineWidth=1;ctx.strokeStyle='rgba(71,85,105,0.10)';
+  const t0=Math.max(0,Math.floor(viewStart/tStep)*tStep);
+  for(let t=t0;t<=viewEnd+tStep*.25;t+=tStep){const x=timeToX(t);if(x<-1||x>state.display.width+1)continue;ctx.beginPath();ctx.moveTo(x,0);ctx.lineTo(x,state.display.height);ctx.stroke();}
+  const fStep=freqAxisStep(),f0=Math.ceil(state.display.fmin/fStep)*fStep;
+  ctx.strokeStyle='rgba(71,85,105,0.08)';
+  for(let f=f0;f<=state.display.fmax+1e-9;f+=fStep){const y=freqToY(f);ctx.beginPath();ctx.moveTo(0,y);ctx.lineTo(state.display.width,y);ctx.stroke();}
   ctx.restore();
 }
-
-function chooseTimeStep(duration) {
-  const width = Math.max(1, state.display?.width || 1000);
-  // Buscamos marcas temporales más densas que cada 30 s, pero sin abarrotar.
-  // targetPx representa la separación visual mínima aproximada entre etiquetas.
-  const targetPx = 150;
-  const raw = (duration * targetPx) / width;
-  const candidates = [0.25, 0.5, 1, 2, 5, 10, 15, 20, 30, 60, 120, 300, 600];
-  for (const c of candidates) {
-    if (c >= raw) return c;
-  }
-  return 600;
-}
-
-function chooseFreqStep() {
-  const span = state.display.fmax - state.display.fmin;
-  if (span <= 2000) return 250;
-  if (span <= 5000) return 500;
-  if (span <= 10000) return 1000;
-  return 2000;
-}
-
-function prettyTime(sec) {
-  if (sec < 1) return `${sec.toFixed(1)} s`;
-  if (state.display && state.display.duration > 900 && sec >= 60) {
-    const m = Math.floor(sec / 60);
-    const s = Math.round(sec % 60);
-    return s === 0 ? `${m} min` : `${m}:${String(s).padStart(2, '0')}`;
-  }
-  return state.display && state.display.duration <= 30 ? `${sec.toFixed(1)} s` : `${sec.toFixed(0)} s`;
-}
-
-function prettyFreq(hz) {
-  return hz >= 1000 ? `${(hz / 1000).toFixed(1)} kHz` : `${hz.toFixed(0)} Hz`;
-}
-
 function drawOverlay() {
   if (!state.display || !el.overlayCanvas.width) return;
   const ctx = el.overlayCanvas.getContext('2d');
   ctx.clearRect(0, 0, el.overlayCanvas.width, el.overlayCanvas.height);
+  drawScientificGrid(ctx);
   drawMatches(ctx);
   drawTemplates(ctx);
   const active = getActiveTemplate();
@@ -1836,28 +2482,24 @@ function hexToRgba(hex, alpha) {
   return `rgba(${r},${g},${b},${alpha})`;
 }
 
+function drawAnnotationLabel(ctx,x,y,lines,color){
+  const arr=Array.isArray(lines)?lines:[String(lines||'')]; if(!arr.length||!arr[0])return;
+  ctx.save();ctx.font='600 10px Inter, Arial, sans-serif';
+  const widths=arr.map(v=>ctx.measureText(v).width),w=Math.max(...widths)+10,h=arr.length*12+6;
+  const px=clamp(x,2,Math.max(2,state.display.width-w-2)),py=clamp(y-h-3,2,Math.max(2,state.display.height-h-2));
+  ctx.fillStyle='rgba(255,255,255,.92)';ctx.strokeStyle=color;ctx.lineWidth=1.25;
+  if(ctx.roundRect){ctx.beginPath();ctx.roundRect(px,py,w,h,4);ctx.fill();ctx.stroke();}else{ctx.fillRect(px,py,w,h);ctx.strokeRect(px,py,w,h);}
+  ctx.fillStyle='#142033';ctx.textBaseline='top';arr.forEach((v,i)=>ctx.fillText(v,px+5,py+3+i*12));ctx.restore();
+}
+
 function drawMatches(ctx) {
   const matches = state.matches || [];
-  ctx.font = '11px Arial';
   for (const m of matches.slice(0, CONFIG.maxMatchesToDraw)) {
-    const tpl = state.templates.find(t => t.id === m.templateId);
-    if (tpl && tpl.showMatches === false) continue;
-    const color = m.color || tpl?.color || '#00e5ff';
-    const x1 = timeToX(m.tmin);
-    const x2 = timeToX(m.tmax);
-    const y1 = freqToY(m.fmax);
-    const y2 = freqToY(m.fmin);
-    const rx = Math.min(x1, x2);
-    const ry = Math.min(y1, y2);
-    const rw = Math.abs(x2 - x1);
-    const rh = Math.abs(y2 - y1);
-    ctx.lineWidth = 2;
-    ctx.strokeStyle = color;
-    ctx.fillStyle = hexToRgba(color, 0.12);
-    ctx.fillRect(rx, ry, rw, rh);
-    ctx.strokeRect(rx, ry, rw, rh);
-    ctx.fillStyle = color;
-    ctx.fillText(m.score.toFixed(2), rx + 2, Math.max(12, ry - 2));
+    const tpl = state.templates.find(t => t.id === m.templateId); if (tpl && tpl.showMatches === false) continue;
+    const color=m.color||tpl?.color||'#06b6d4',x1=timeToX(m.tmin),x2=timeToX(m.tmax),y1=freqToY(m.fmax),y2=freqToY(m.fmin);
+    const rx=Math.min(x1,x2),ry=Math.min(y1,y2),rw=Math.abs(x2-x1),rh=Math.abs(y2-y1);
+    ctx.save();ctx.lineWidth=1.6;ctx.strokeStyle=color;ctx.fillStyle=hexToRgba(color,.055);ctx.fillRect(rx,ry,rw,rh);ctx.strokeRect(rx,ry,rw,rh);ctx.restore();
+    drawAnnotationLabel(ctx,rx,ry,[displayLabelForTemplate(tpl||{})||m.etiqueta||'coincidencia',`score: ${Number(m.score).toFixed(2)}`],color);
   }
 }
 
@@ -1879,37 +2521,15 @@ function drawTemplates(ctx) {
 
 function drawRoi(ctx, roi, label, stroke, fill, lineWidth, doubleBorder = false, dashed = false) {
   if (!roi) return;
-  const x1 = timeToX(roi.tmin);
-  const x2 = timeToX(roi.tmax);
-  const y1 = freqToY(roi.fmax);
-  const y2 = freqToY(roi.fmin);
-  const rx = Math.min(x1, x2);
-  const ry = Math.min(y1, y2);
-  const rw = Math.abs(x2 - x1);
-  const rh = Math.abs(y2 - y1);
-
-  ctx.save();
-  ctx.fillStyle = fill;
-  ctx.strokeStyle = stroke;
-  ctx.lineWidth = lineWidth;
-  if (dashed) ctx.setLineDash([8, 5]);
-  ctx.fillRect(rx, ry, rw, rh);
-  ctx.strokeRect(rx, ry, rw, rh);
-  ctx.setLineDash([]);
-
-  if (doubleBorder) {
-    ctx.lineWidth = 1.5;
-    ctx.strokeStyle = 'rgba(15,23,42,0.85)';
-    ctx.strokeRect(rx + 4, ry + 4, Math.max(0, rw - 8), Math.max(0, rh - 8));
-  }
-
-  if (label) {
-    ctx.fillStyle = stroke;
-    ctx.font = '12px Arial';
-    ctx.fillText(label, rx + 4, Math.max(12, ry - 4));
-  }
-  ctx.restore();
+  const x1=timeToX(roi.tmin),x2=timeToX(roi.tmax),y1=freqToY(roi.fmax),y2=freqToY(roi.fmin);
+  const rx=Math.min(x1,x2),ry=Math.min(y1,y2),rw=Math.abs(x2-x1),rh=Math.abs(y2-y1);
+  ctx.save();ctx.fillStyle=fill;ctx.strokeStyle=stroke;ctx.lineWidth=Math.min(2.2,lineWidth||1.8);if(dashed)ctx.setLineDash([7,4]);ctx.fillRect(rx,ry,rw,rh);ctx.strokeRect(rx,ry,rw,rh);ctx.setLineDash([]);
+  if(doubleBorder){ctx.lineWidth=1.2;ctx.strokeStyle='rgba(15,23,42,.82)';ctx.strokeRect(rx+3,ry+3,Math.max(0,rw-6),Math.max(0,rh-6));}
+  ctx.restore(); if(label)drawAnnotationLabel(ctx,rx,ry,[label],stroke);
 }
+
+function showZoomRectCanvas(x1,y1,x2,y2){if(!el.zoomRect)return;el.zoomRect.style.display='block';el.zoomRect.style.left=`${Math.min(x1,x2)}px`;el.zoomRect.style.top=`${Math.min(y1,y2)}px`;el.zoomRect.style.width=`${Math.abs(x2-x1)}px`;el.zoomRect.style.height=`${Math.abs(y2-y1)}px`;}
+function hideZoomRectCanvas(){if(el.zoomRect)el.zoomRect.style.display='none';}
 
 function getCanvasXY(ev) {
   const rect = el.overlayCanvas.getBoundingClientRect();
@@ -1937,8 +2557,8 @@ function setRoi(roi, fromFields = false) {
   state.roi = clipped;
   el.roiTmin.value = fmt(clipped.tmin, 3);
   el.roiTmax.value = fmt(clipped.tmax, 3);
-  el.roiFmin.value = fmt(clipped.fmin, 1);
-  el.roiFmax.value = fmt(clipped.fmax, 1);
+  el.roiFmin.value = fmt(clipped.fmin / 1000, 3);
+  el.roiFmax.value = fmt(clipped.fmax / 1000, 3);
   if (el.btnSaveRoi) el.btnSaveRoi.disabled = false;
   if (el.btnClearRoi) el.btnClearRoi.disabled = false;
   const validNow = isRoiValid(clipped);
@@ -2014,31 +2634,53 @@ function clipRoi(roi) {
 function updatePlayhead(doFollow = false) {
   if (!state.display) return;
   const t = el.audioPlayer.currentTime || 0;
+  if (doFollow && !state.dragging && el.followPlayback.checked) scrollToPlayhead(t);
   const x = timeToX(t);
+  const visible=x>=-2&&x<=state.display.width+2;
   el.playhead.style.left = `${x}px`;
-  if (doFollow && !state.dragging && el.followPlayback.checked) {
-    scrollToPlayhead(x);
+  el.playhead.style.visibility=visible?'visible':'hidden';
+  if(el.playheadAxisLabel){
+    el.playheadAxisLabel.hidden=!visible;
+    if(visible){
+      el.playheadAxisLabel.textContent=`${t.toFixed(2)} s`;
+      el.playheadAxisLabel.style.left=`${CONFIG.freqAxisW+(el.spectrogramViewport.scrollLeft||0)+x}px`;
+    }
   }
 }
 
-function scrollToPlayhead(x, force = false) {
+function scrollToPlayhead(t, force = false, fraction = 0.40) {
   if (!state.display) return;
   if (!force && !el.followPlayback.checked) return;
-  const visibleW = el.spectrogramViewport.clientWidth;
-  const maxScroll = Math.max(0, el.spectrogramViewport.scrollWidth - visibleW);
-  const target = CONFIG.freqAxisW + x - visibleW * 0.45;
-  el.spectrogramViewport.scrollLeft = clamp(target, 0, maxScroll);
+  const visibleSec=visualViewDuration();
+  const targetStart=clamp((Number(t)||0)-visibleSec*clamp(fraction,0,1),0,visualMaxViewStart());
+  const target=scrollLeftForViewStartTime(targetStart);
+  if (Math.abs(target - (el.spectrogramViewport.scrollLeft || 0)) < 0.1) return;
+  el.spectrogramViewport.scrollLeft = target;
+  syncViewportLayerPosition();
 }
 
 function centerOnCurrentTime(force = true) {
   if (!state.display) return;
-  scrollToPlayhead(timeToX(el.audioPlayer.currentTime || 0), force);
+  scrollToPlayhead(el.audioPlayer.currentTime || 0, force, .5);
+  scheduleVisualRender(0);requestVisibleVisualTiles(true);updatePlayhead(false);
 }
 
 function startAnimationLoop() {
   if (state.rafId !== null) cancelAnimationFrame(state.rafId);
-  const loop = () => {
+  visualState.lastPlaybackRenderAt=0;
+  const loop = (now=performance.now()) => {
     updatePlayhead(true);
+    // Canvas fijo del viewport: se repinta a ~30 fps. Si el tile fino aún no
+    // llegó, bestVisualCacheForTime usa automáticamente un nivel inferior;
+    // por eso el espectrograma nunca queda blanco durante la reproducción.
+    if(now-(visualState.lastPlaybackRenderAt||0)>=30){
+      visualState.lastPlaybackRenderAt=now;
+      scheduleVisualRender(0);
+    }
+    if(now-(visualState.lastPlaybackTileRequestAt||0)>=90){
+      visualState.lastPlaybackTileRequestAt=now;
+      requestVisibleVisualTiles(true);
+    }
     if (!el.audioPlayer.paused && !el.audioPlayer.ended) state.rafId = requestAnimationFrame(loop);
     else state.rafId = null;
   };
@@ -2061,6 +2703,7 @@ function clearMatchesTable() {
     message = 'Sin coincidencias todavía. Busca similares para llenar la tabla.';
   }
   el.matchesTable.querySelector('tbody').innerHTML = `<tr><td colspan="7" class="muted-cell">${escapeHtml(message)}</td></tr>`;
+  if (el.resultsFooterSummary) el.resultsFooterSummary.innerHTML = `<span class="ui-icon"><svg viewBox="0 0 24 24"><path d="M8 6h12M8 12h12M8 18h12M4 6h.01M4 12h.01M4 18h.01"/></svg></span><strong>0 coincidencias</strong><span>· ordenado por score</span>`;
 }
 
 function sortMatchesForTable(matches) {
@@ -2115,7 +2758,7 @@ function renderMatchesTable() {
     const tr = document.createElement('tr');
     tr.className = 'match-row';
     const labelText = escapeHtml(m.etiqueta || m.templateLabel || '');
-    tr.innerHTML = `<td>${m._rank}</td><td class="label-pill-cell"><span class="label-pill editable-label" contenteditable="true" data-template-id="${escapeHtml(m.templateId || '')}" style="--tpl-color:${m.color || '#00e5ff'}">${labelText}</span></td><td>${m.score.toFixed(3)}</td><td>${m.tmin.toFixed(2)}</td><td>${m.tmax.toFixed(2)}</td><td>${m.fmin.toFixed(0)}</td><td>${m.fmax.toFixed(0)}</td>`;
+    tr.innerHTML = `<td>${m._rank}</td><td class="label-pill-cell"><span class="label-pill editable-label" contenteditable="true" data-template-id="${escapeHtml(m.templateId || '')}" style="--tpl-color:${m.color || '#00e5ff'}">${labelText}</span></td><td>${m.score.toFixed(3)}</td><td>${m.tmin.toFixed(2)}</td><td>${m.tmax.toFixed(2)}</td><td>${(m.fmin/1000).toFixed(2)}</td><td>${(m.fmax/1000).toFixed(2)}</td>`;
     tr.addEventListener('click', (ev) => {
       if (ev.target && ev.target.classList.contains('editable-label')) return;
       el.audioPlayer.currentTime = m.tmin;
@@ -2138,6 +2781,10 @@ function renderMatchesTable() {
     });
     tbody.appendChild(tr);
   });
+  if (el.resultsFooterSummary) {
+    const key=state.tableSort?.key || 'score';
+    el.resultsFooterSummary.innerHTML=`<span class="ui-icon"><svg viewBox="0 0 24 24"><path d="M8 6h12M8 12h12M8 18h12M4 6h.01M4 12h.01M4 18h.01"/></svg></span><strong>${state.matches.length} coincidencia${state.matches.length===1?'':'s'}</strong><span>· ordenado por ${escapeHtml(key)}</span>`;
+  }
 }
 
 function updateTemplateLabel(templateId, newLabel, options = {}) {
@@ -2351,8 +2998,8 @@ function applyRoiFromFields() {
   setRoi({
     tmin: Number(el.roiTmin.value),
     tmax: Number(el.roiTmax.value),
-    fmin: Number(el.roiFmin.value),
-    fmax: Number(el.roiFmax.value),
+    fmin: Number(el.roiFmin.value) * 1000,
+    fmax: Number(el.roiFmax.value) * 1000,
   }, true);
 }
 
@@ -2660,7 +3307,17 @@ function getTemplateAutoMode(tpl) {
 function setAutoAdjustControls(mode) {
   const normalized = normalizeAutoAdjustMode(mode);
   if (el.autoAdjustMode) el.autoAdjustMode.value = normalized;
+  syncAutoAdjustSegments(normalized);
   updateManualSearchControlState();
+}
+
+function syncAutoAdjustSegments(mode = null) {
+  const normalized = normalizeAutoAdjustMode(mode || el.autoAdjustMode?.value || 'none');
+  if (!el.autoAdjustSegments) return;
+  el.autoAdjustSegments.querySelectorAll('[data-auto-mode]').forEach(btn => {
+    btn.classList.toggle('active', normalizeAutoAdjustMode(btn.dataset.autoMode) === normalized);
+    btn.setAttribute('aria-checked', normalizeAutoAdjustMode(btn.dataset.autoMode) === normalized ? 'true' : 'false');
+  });
 }
 
 function updateManualSearchControlState() {
@@ -2736,6 +3393,126 @@ function syncRangeNumber(rangeEl, numberEl, decimals, minValue, maxValue) {
   setBoth(rangeEl.value, 'none');
 }
 
+function getAxisCanvasXY(ev,canvas,logicalW,logicalH){const r=canvas.getBoundingClientRect();return [clamp((ev.clientX-r.left)*logicalW/Math.max(1,r.width),0,logicalW),clamp((ev.clientY-r.top)*logicalH/Math.max(1,r.height),0,logicalH)];}
+
+const PALETTE_LABELS = {magma_light:'Magma clara',magma_r:'Magma invertida',magma:'Magma',inferno_r:'Inferno invertida',inferno:'Inferno',plasma_r:'Plasma invertida',plasma:'Plasma',viridis_r:'Viridis invertida',viridis:'Viridis',cividis:'Cividis',turbo:'Turbo',hot:'Hot',gray:'Grises',gray_r:'Grises invertidos'};
+function paletteClassName(value){return 'palette-'+String(value||'magma_light').replace(/_/g,'-');}
+function syncPalettePicker(value=visualState.colormap){
+  if(el.palettePickerLabel) el.palettePickerLabel.textContent=PALETTE_LABELS[value]||value;
+  if(el.palettePickerSwatch){el.palettePickerSwatch.className=`palette-swatch ${paletteClassName(value)}`;}
+  if(el.palettePickerMenu) el.palettePickerMenu.querySelectorAll('[data-palette]').forEach(btn=>btn.classList.toggle('active',btn.dataset.palette===value));
+}
+
+
+function sidePanelDefaultWidthPx() {
+  return clamp(window.innerWidth * 0.33, 360, 560);
+}
+
+function sidePanelWidthLimits() {
+  const min = 250;
+  const max = Math.max(min, Math.min(720, window.innerWidth * 0.56));
+  return { min, max };
+}
+
+function setSidePanelWidth(px, persist = false) {
+  if (!el.sidePanel || !el.workspace || window.innerWidth <= 980) return;
+  const { min, max } = sidePanelWidthLimits();
+  const width = clamp(Number(px) || sidePanelDefaultWidthPx(), min, max);
+  document.documentElement.style.setProperty('--side-panel-w', `${Math.round(width)}px`);
+  if (el.sidePanelResizer) {
+    el.sidePanelResizer.setAttribute('aria-valuemin', String(Math.round(min)));
+    el.sidePanelResizer.setAttribute('aria-valuemax', String(Math.round(max)));
+    el.sidePanelResizer.setAttribute('aria-valuenow', String(Math.round(width)));
+  }
+  if (persist) {
+    try { localStorage.setItem('bioacoustic-v45.8-side-panel-width', String(Math.round(width))); } catch (_) {}
+  }
+}
+
+function refreshAfterSidePanelResize(keepFit = false) {
+  if (!state.display) return;
+  const oldStart=visualViewStartTime();
+  if (keepFit) visualState.pxPerSec = visualFitPxPerSec();
+  syncVisualZoomUi();
+  layoutSpectrogramStage(false);
+  setVisualViewStartTime(keepFit?0:oldStart);
+  drawAxes();
+  drawOverlay();
+  renderVisualSpectrogram();
+  requestVisibleVisualTiles(true);
+  drawSamplePreview();
+}
+
+function attachSidePanelResizer() {
+  const handle = el.sidePanelResizer;
+  if (!handle || !el.sidePanel) return;
+  handle.tabIndex = 0;
+  try {
+    const saved = Number(localStorage.getItem('bioacoustic-v45.8-side-panel-width') || localStorage.getItem('bioacoustic-v45.7.4-side-panel-width') || localStorage.getItem('bioacoustic-v45.7.3-side-panel-width') || localStorage.getItem('bioacoustic-v45.7.2-side-panel-width'));
+    if (Number.isFinite(saved) && saved > 0) setSidePanelWidth(saved, false);
+    else setSidePanelWidth(el.sidePanel.getBoundingClientRect().width || sidePanelDefaultWidthPx(), false);
+  } catch (_) {
+    setSidePanelWidth(el.sidePanel.getBoundingClientRect().width || sidePanelDefaultWidthPx(), false);
+  }
+
+  let startX = 0;
+  let startWidth = 0;
+  let keepFit = false;
+  let raf = 0;
+  const queueRefresh = () => {
+    cancelAnimationFrame(raf);
+    raf = requestAnimationFrame(() => refreshAfterSidePanelResize(keepFit));
+  };
+  const onMove = (ev) => {
+    const dx = ev.clientX - startX;
+    setSidePanelWidth(startWidth - dx, false);
+    queueRefresh();
+  };
+  const onUp = () => {
+    document.body.classList.remove('is-resizing-sidepanel');
+    window.removeEventListener('pointermove', onMove);
+    window.removeEventListener('pointerup', onUp);
+    const width = el.sidePanel.getBoundingClientRect().width;
+    setSidePanelWidth(width, true);
+    queueRefresh();
+  };
+  handle.addEventListener('pointerdown', (ev) => {
+    if (window.innerWidth <= 980) return;
+    startX = ev.clientX;
+    startWidth = el.sidePanel.getBoundingClientRect().width;
+    const fit = visualFitPxPerSec();
+    keepFit = Boolean(state.display && Math.abs(visualState.pxPerSec - fit) <= Math.max(0.05, fit * 0.025));
+    document.body.classList.add('is-resizing-sidepanel');
+    handle.setPointerCapture?.(ev.pointerId);
+    window.addEventListener('pointermove', onMove);
+    window.addEventListener('pointerup', onUp, { once: true });
+    ev.preventDefault();
+  });
+  handle.addEventListener('dblclick', () => {
+    try { localStorage.removeItem('bioacoustic-v45.8-side-panel-width'); localStorage.removeItem('bioacoustic-v45.7.4-side-panel-width'); localStorage.removeItem('bioacoustic-v45.7.3-side-panel-width'); localStorage.removeItem('bioacoustic-v45.7.2-side-panel-width'); } catch (_) {}
+    document.documentElement.style.removeProperty('--side-panel-w');
+    refreshAfterSidePanelResize(true);
+  });
+  handle.addEventListener('keydown', (ev) => {
+    if (!['ArrowLeft','ArrowRight','Home'].includes(ev.key) || window.innerWidth <= 980) return;
+    ev.preventDefault();
+    const current = el.sidePanel.getBoundingClientRect().width;
+    if (ev.key === 'Home') {
+      try { localStorage.removeItem('bioacoustic-v45.8-side-panel-width'); localStorage.removeItem('bioacoustic-v45.7.4-side-panel-width'); localStorage.removeItem('bioacoustic-v45.7.3-side-panel-width'); localStorage.removeItem('bioacoustic-v45.7.2-side-panel-width'); } catch (_) {}
+      document.documentElement.style.removeProperty('--side-panel-w');
+      refreshAfterSidePanelResize(true);
+      return;
+    }
+    // Flecha izquierda mueve el separador a la izquierda = panel derecho más ancho.
+    setSidePanelWidth(current + (ev.key === 'ArrowLeft' ? 20 : -20), true);
+    refreshAfterSidePanelResize(false);
+  });
+  window.addEventListener('resize', () => {
+    if (window.innerWidth <= 980 || !el.sidePanel) return;
+    setSidePanelWidth(el.sidePanel.getBoundingClientRect().width || sidePanelDefaultWidthPx(), false);
+  });
+}
+
 function attachEvents() {
   const openAudioPicker = () => {
     if (el.fileInput) el.fileInput.value = '';
@@ -2755,15 +3532,71 @@ function attachEvents() {
   });
   el.btnCenterPlayhead.addEventListener('click', () => centerOnCurrentTime(true));
   el.followPlayback.addEventListener('change', () => { if (el.followPlayback.checked) centerOnCurrentTime(true); });
-  el.audioPlayer.addEventListener('play', startAnimationLoop);
-  el.audioPlayer.addEventListener('pause', stopAnimationLoop);
-  el.audioPlayer.addEventListener('ended', stopAnimationLoop);
-  el.audioPlayer.addEventListener('timeupdate', () => updatePlayhead(false));
-  el.audioPlayer.addEventListener('seeked', () => { updatePlayhead(true); centerOnCurrentTime(true); });
+  if(el.btnFitAll)el.btnFitAll.addEventListener('click',fitVisualAll);
+  if(el.btnZoomIn)el.btnZoomIn.addEventListener('click',()=>setVisualZoom(visualState.pxPerSec*1.35,el.audioPlayer.currentTime||null));
+  if(el.btnZoomOut)el.btnZoomOut.addEventListener('click',()=>setVisualZoom(visualState.pxPerSec/1.35,el.audioPlayer.currentTime||null));
+  if(el.zoomSelection)el.zoomSelection.addEventListener('change',()=>el.spectrogramViewport.classList.toggle('zoom-select-on',el.zoomSelection.checked));
+  const applyVisualScale = (value) => {
+    if(el.freqScaleSelect) el.freqScaleSelect.value=value;
+    if(el.quickFreqScale) el.quickFreqScale.value=value;
+    readVisualControls(); if(state.display) state.display.freqScale=visualState.freqScale; drawAxes(); drawOverlay(); renderVisualSpectrogram(); drawSamplePreview();
+  };
+  const applyVisualPalette = (value) => {
+    if(el.colormapSelect) el.colormapSelect.value=value;
+    if(el.quickColormap) el.quickColormap.value=value;
+    readVisualControls(); syncPalettePicker(value); renderVisualSpectrogram(); drawSamplePreview();
+  };
+  if(el.freqScaleSelect)el.freqScaleSelect.addEventListener('change',()=>applyVisualScale(el.freqScaleSelect.value));
+  if(el.quickFreqScale)el.quickFreqScale.addEventListener('change',()=>applyVisualScale(el.quickFreqScale.value));
+  if(el.colormapSelect)el.colormapSelect.addEventListener('change',()=>applyVisualPalette(el.colormapSelect.value));
+  if(el.quickColormap)el.quickColormap.addEventListener('change',()=>applyVisualPalette(el.quickColormap.value));
+  syncPalettePicker(el.colormapSelect?.value || visualState.colormap);
+  if(el.palettePickerButton && el.palettePickerMenu){
+    el.palettePickerButton.addEventListener('click',(ev)=>{ev.stopPropagation();const open=el.palettePickerMenu.hidden;el.palettePickerMenu.hidden=!open;el.palettePickerButton.setAttribute('aria-expanded',open?'true':'false');});
+    el.palettePickerMenu.querySelectorAll('[data-palette]').forEach(btn=>btn.addEventListener('click',()=>{applyVisualPalette(btn.dataset.palette);el.palettePickerMenu.hidden=true;el.palettePickerButton.setAttribute('aria-expanded','false');}));
+    document.addEventListener('click',(ev)=>{if(!ev.target.closest('#palettePicker')){el.palettePickerMenu.hidden=true;el.palettePickerButton.setAttribute('aria-expanded','false');}});
+  }
+  [el.contrastRange,el.brightnessRange,el.gammaRange].forEach(n=>n&&n.addEventListener('input',()=>{readVisualControls();renderVisualSpectrogram();drawSamplePreview();}));
+  [el.visualFftSelect,el.visualQualitySelect].forEach(n=>n&&n.addEventListener('change',()=>applySpectrogramSettings({recompute:true})));
+  if(el.visualHeightRange)el.visualHeightRange.addEventListener('input',()=>{visualState.autoHeight=false;applySpectrogramSettings({relayout:true});drawSamplePreview();});
+  if(el.pxPerSecRange)el.pxPerSecRange.addEventListener('input',()=>{setVisualZoom(visualZoomFromSlider(Number(el.pxPerSecRange.value)),null);drawSamplePreview();});
+  if(el.btnResetVisual)el.btnResetVisual.addEventListener('click',()=>{Object.assign(visualState,VISUAL_DEFAULTS);if(el.freqScaleSelect)el.freqScaleSelect.value=VISUAL_DEFAULTS.freqScale;if(el.quickFreqScale)el.quickFreqScale.value=VISUAL_DEFAULTS.freqScale;if(el.colormapSelect)el.colormapSelect.value=VISUAL_DEFAULTS.colormap;if(el.quickColormap)el.quickColormap.value=VISUAL_DEFAULTS.colormap;if(el.contrastRange)el.contrastRange.value=VISUAL_DEFAULTS.contrast;if(el.brightnessRange)el.brightnessRange.value=VISUAL_DEFAULTS.brightness;if(el.gammaRange)el.gammaRange.value=VISUAL_DEFAULTS.gamma;if(el.visualFftSelect)el.visualFftSelect.value=VISUAL_DEFAULTS.fftSize;if(el.visualQualitySelect)el.visualQualitySelect.value=VISUAL_DEFAULTS.quality;if(el.visualHeightRange)el.visualHeightRange.value=VISUAL_DEFAULTS.height;visualState.autoHeight=true;syncAutoVisualHeight(true);readVisualControls();syncPalettePicker(VISUAL_DEFAULTS.colormap);fitVisualAll();scheduleVisualRecompute();drawSamplePreview();});
+
+  el.audioPlayer.addEventListener('play', () => { startAnimationLoop(); syncCustomPlayer(); });
+  el.audioPlayer.addEventListener('pause', () => { stopAnimationLoop(); syncCustomPlayer(); });
+  el.audioPlayer.addEventListener('ended', () => { stopAnimationLoop(); syncCustomPlayer(); });
+  el.audioPlayer.addEventListener('loadedmetadata', syncCustomPlayer);
+  el.audioPlayer.addEventListener('durationchange', syncCustomPlayer);
+  el.audioPlayer.addEventListener('timeupdate', () => { updatePlayhead(false); syncCustomPlayer(); });
+  el.audioPlayer.addEventListener('seeked', () => { updatePlayhead(false); syncCustomPlayer(); });
+  if(el.btnPlayPause)el.btnPlayPause.addEventListener('click',()=>{el.audioPlayer.paused?el.audioPlayer.play():el.audioPlayer.pause();});
+  if(el.btnBackOne)el.btnBackOne.addEventListener('click',()=>{el.audioPlayer.currentTime=clamp((el.audioPlayer.currentTime||0)-1,0,state.duration||0);syncCustomPlayer();});
+  if(el.btnForwardOne)el.btnForwardOne.addEventListener('click',()=>{el.audioPlayer.currentTime=clamp((el.audioPlayer.currentTime||0)+1,0,state.duration||0);syncCustomPlayer();});
+  if(el.playerSeek)el.playerSeek.addEventListener('input',()=>{el.audioPlayer.currentTime=clamp(Number(el.playerSeek.value)||0,0,state.duration||0);updatePlayhead(true);syncCustomPlayer();});
+  if(el.btnMute)el.btnMute.addEventListener('click',()=>{el.audioPlayer.muted=!el.audioPlayer.muted;syncCustomPlayer();});
+  if(el.playbackRate)el.playbackRate.addEventListener('change',()=>{el.audioPlayer.playbackRate=Number(el.playbackRate.value)||1;});
+  el.spectrogramViewport.addEventListener('scroll',()=>{
+    if(!state.display)return;
+    const mx=visualMaxScrollLeft(visualState.virtualWidth||visualStageWidth());
+    if(el.spectrogramViewport.scrollLeft>mx+1)el.spectrogramViewport.scrollLeft=mx;
+    syncViewportLayerPosition();
+    const playing=Boolean(el.audioPlayer && !el.audioPlayer.paused && !el.audioPlayer.ended);
+    if(!playing){scheduleVisualRender(0);requestVisibleVisualTiles();}
+    updatePlayhead(false); updateViewRangeLabel();
+  });
+  // Arrastrar regla temporal = zoom solo en tiempo; regla vertical = zoom solo en frecuencia.
+  el.timeAxisCanvas.addEventListener('mousedown',(ev)=>{if(!state.display)return;const [x]=getAxisCanvasXY(ev,el.timeAxisCanvas,state.display.width,CONFIG.timeAxisH);state.ruleDrag={type:'time',start:x,current:x};drawAxes();ev.preventDefault();});
+  el.freqAxisCanvas.addEventListener('mousedown',(ev)=>{if(!state.display)return;const [,y]=getAxisCanvasXY(ev,el.freqAxisCanvas,CONFIG.freqAxisW,state.display.height);state.ruleDrag={type:'freq',start:y,current:y};drawAxes();ev.preventDefault();});
+  el.timeAxisCanvas.addEventListener('mousemove',(ev)=>{if(!state.ruleDrag||state.ruleDrag.type!=='time'||!state.display)return;const [x]=getAxisCanvasXY(ev,el.timeAxisCanvas,state.display.width,CONFIG.timeAxisH);state.ruleDrag.current=x;drawAxes();});
+  el.freqAxisCanvas.addEventListener('mousemove',(ev)=>{if(!state.ruleDrag||state.ruleDrag.type!=='freq'||!state.display)return;const [,y]=getAxisCanvasXY(ev,el.freqAxisCanvas,CONFIG.freqAxisW,state.display.height);state.ruleDrag.current=y;drawAxes();});
+  window.addEventListener('mousemove',(ev)=>{if(!state.ruleDrag||!state.display)return;const rd=state.ruleDrag;if(rd.type==='time'){const [x]=getAxisCanvasXY(ev,el.timeAxisCanvas,state.display.width,CONFIG.timeAxisH);rd.current=x;}else{const [,y]=getAxisCanvasXY(ev,el.freqAxisCanvas,CONFIG.freqAxisW,state.display.height);rd.current=y;}drawAxes();});
+  window.addEventListener('mouseup',(ev)=>{if(!state.ruleDrag||!state.display)return;const rd=state.ruleDrag;state.ruleDrag=null;drawAxes();if(rd.type==='time'){const [x]=getAxisCanvasXY(ev,el.timeAxisCanvas,state.display.width,CONFIG.timeAxisH);if(Math.abs(x-rd.start)>10)applyTimeInterval(xToTime(rd.start),xToTime(x));}else{const [,y]=getAxisCanvasXY(ev,el.freqAxisCanvas,CONFIG.freqAxisW,state.display.height);if(Math.abs(y-rd.start)>10)applyFreqRange(yToFreq(rd.start),yToFreq(y));}});
+
 
   el.overlayCanvas.addEventListener('mousedown', (ev) => {
     if (!state.display) return;
     state.dragging = true;
+    state.zoomDragging = Boolean(el.zoomSelection?.checked);
     state.moved = false;
     state.preventRoiEdit = shouldBlockCanvasRoiEdit();
     state.lockToastShown = false;
@@ -2772,6 +3605,11 @@ function attachEvents() {
   el.overlayCanvas.addEventListener('mousemove', (ev) => {
     if (!state.dragging || !state.display) return;
     const [x, y] = getCanvasXY(ev);
+    if (state.zoomDragging) {
+      state.moved = true;
+      showZoomRectCanvas(state.startX,state.startY,x,y);
+      return;
+    }
 
     if (state.preventRoiEdit) {
       const dist = Math.hypot(x - state.startX, y - state.startY);
@@ -2796,6 +3634,10 @@ function attachEvents() {
     if (!state.dragging || !state.display) return;
     state.dragging = false;
     const [x, y] = getCanvasXY(ev);
+    if (state.zoomDragging) {
+      const moved=state.moved; state.zoomDragging=false; hideZoomRectCanvas();
+      if(moved && Math.hypot(x-state.startX,y-state.startY)>8){const r=rectToRoi(state.startX,state.startY,x,y);applyTimeInterval(r.tmin,r.tmax);applyFreqRange(r.fmin,r.fmax);} return;
+    }
 
     if (state.preventRoiEdit) {
       const wasMoved = state.moved;
@@ -2803,8 +3645,7 @@ function attachEvents() {
       state.lockToastShown = false;
       if (!wasMoved) {
         el.audioPlayer.currentTime = xToTime(x);
-        updatePlayhead(true);
-        centerOnCurrentTime(true);
+        updatePlayhead(false);
       } else {
         drawOverlay();
       }
@@ -2813,14 +3654,33 @@ function attachEvents() {
 
     if (!state.moved) {
       el.audioPlayer.currentTime = xToTime(x);
-      updatePlayhead(true);
-      centerOnCurrentTime(true);
+      updatePlayhead(false);
       return;
     }
     setRoi(rectToRoi(state.startX, state.startY, x, y));
   };
   el.overlayCanvas.addEventListener('mouseup', finishDrag);
   el.overlayCanvas.addEventListener('mouseleave', finishDrag);
+
+  // v45.6: marcado táctil real en móvil. El gesto dentro del canvas no desplaza la página.
+  const touchPoint=(ev)=>{const t=ev.touches?.[0]||ev.changedTouches?.[0];return t?getCanvasXY({clientX:t.clientX,clientY:t.clientY}):[0,0];};
+  el.overlayCanvas.addEventListener('touchstart',(ev)=>{
+    if(!state.display)return; ev.preventDefault();
+    state.dragging=true; state.zoomDragging=Boolean(el.zoomSelection?.checked); state.moved=false; state.preventRoiEdit=shouldBlockCanvasRoiEdit(); state.lockToastShown=false;
+    [state.startX,state.startY]=touchPoint(ev);
+  },{passive:false});
+  el.overlayCanvas.addEventListener('touchmove',(ev)=>{
+    if(!state.dragging||!state.display)return; ev.preventDefault(); const [x,y]=touchPoint(ev);
+    if(state.zoomDragging){state.moved=true;showZoomRectCanvas(state.startX,state.startY,x,y);return;}
+    if(state.preventRoiEdit){if(Math.hypot(x-state.startX,y-state.startY)>5)state.moved=true;return;}
+    state.moved=true; const roi=rectToRoi(state.startX,state.startY,x,y); const ctx=el.overlayCanvas.getContext('2d'); drawOverlay(); drawRoi(ctx,roi,'','#000000','rgba(0,0,0,0.04)',2.5,false,true);
+  },{passive:false});
+  el.overlayCanvas.addEventListener('touchend',(ev)=>{
+    if(!state.dragging||!state.display)return; ev.preventDefault(); state.dragging=false; const [x,y]=touchPoint(ev);
+    if(state.zoomDragging){const moved=state.moved;state.zoomDragging=false;hideZoomRectCanvas();if(moved&&Math.hypot(x-state.startX,y-state.startY)>8){const r=rectToRoi(state.startX,state.startY,x,y);applyTimeInterval(r.tmin,r.tmax);applyFreqRange(r.fmin,r.fmax);}return;}
+    if(state.preventRoiEdit){const moved=state.moved;state.preventRoiEdit=false;if(!moved){el.audioPlayer.currentTime=xToTime(x);updatePlayhead(false);}else drawOverlay();return;}
+    if(!state.moved){el.audioPlayer.currentTime=xToTime(x);updatePlayhead(false);return;} setRoi(rectToRoi(state.startX,state.startY,x,y));
+  },{passive:false});
 
   if (el.btnApplyRoi) el.btnApplyRoi.addEventListener('click', applyRoiFromFields);
   if (el.btnSaveRoi) el.btnSaveRoi.addEventListener('click', saveRoi);
@@ -2848,7 +3708,14 @@ function attachEvents() {
     });
   }
   if (el.showActiveMatches) el.showActiveMatches.addEventListener('change', () => { syncActiveTemplateParamsFromUi(); drawOverlay(); });
-  if (el.autoAdjustMode) el.autoAdjustMode.addEventListener('change', () => { syncActiveTemplateParamsFromUi(); updateManualSearchControlState(); });
+  if (el.autoAdjustMode) el.autoAdjustMode.addEventListener('change', () => { syncAutoAdjustSegments(); syncActiveTemplateParamsFromUi(); updateManualSearchControlState(); });
+  if (el.autoAdjustSegments) {
+    el.autoAdjustSegments.querySelectorAll('[data-auto-mode]').forEach(btn => btn.addEventListener('click', () => {
+      const mode=normalizeAutoAdjustMode(btn.dataset.autoMode);
+      if(el.autoAdjustMode) el.autoAdjustMode.value=mode;
+      syncAutoAdjustSegments(mode); syncActiveTemplateParamsFromUi(); updateManualSearchControlState();
+    }));
+  }
   if (el.expertMode) el.expertMode.addEventListener('change', () => { syncActiveTemplateParamsFromUi(); updateManualSearchControlState(); });
   if (el.useMultiSamples) el.useMultiSamples.addEventListener('change', () => {
     const tpl = getActiveTemplate();
@@ -2916,9 +3783,7 @@ function attachEvents() {
       showToast('Ayuda', dot.dataset.tip || dot.getAttribute('title') || 'Sin descripción.', 9000);
     });
   });
-  window.addEventListener('resize', () => { layoutSpectrogramStage(); drawAxes(); drawOverlay(); updatePlayhead(false); });
-  if (el.freqScaleSelect) el.freqScaleSelect.addEventListener('change', applySpectrogramSettings);
-  if (el.colormapSelect) el.colormapSelect.addEventListener('change', applySpectrogramSettings);
+
   syncRangeNumber(el.scoreThreshold, el.scoreThresholdInput, 3, 0, 0.99);
   syncRangeNumber(el.strideSec, el.strideSecInput, 2, 0.01, 1.00);
   if (el.expertMinMatches && el.expertMinMatchesInput) syncRangeNumber(el.expertMinMatches, el.expertMinMatchesInput, 0, 1, 20);
@@ -2929,11 +3794,15 @@ function attachEvents() {
     if (node) node.addEventListener('change', syncActiveTemplateParamsFromUi);
   });
   updateManualSearchControlState();
+  window.addEventListener('keydown',(ev)=>{const tag=(ev.target&&ev.target.tagName||'').toLowerCase();if(['input','select','textarea','button'].includes(tag))return;if(ev.key==='+'||ev.key==='='){ev.preventDefault();setVisualZoom(visualState.pxPerSec*1.25,el.audioPlayer.currentTime||null);}else if(ev.key==='-'||ev.key==='_'){ev.preventDefault();setVisualZoom(visualState.pxPerSec/1.25,el.audioPlayer.currentTime||null);}else if(ev.key==='0'){ev.preventDefault();fitVisualAll();}else if(ev.key.toLowerCase()==='z'){ev.preventDefault();el.zoomSelection.checked=!el.zoomSelection.checked;el.spectrogramViewport.classList.toggle('zoom-select-on',el.zoomSelection.checked);}else if(ev.key==='Escape'){el.zoomSelection.checked=false;el.spectrogramViewport.classList.remove('zoom-select-on');hideZoomRectCanvas();}else if(ev.key===' '){ev.preventDefault();el.audioPlayer.paused?el.audioPlayer.play():el.audioPlayer.pause();}else if(ev.key==='ArrowLeft'){ev.preventDefault();el.audioPlayer.currentTime=clamp((el.audioPlayer.currentTime||0)-1,0,state.duration);updatePlayhead(true);}else if(ev.key==='ArrowRight'){ev.preventDefault();el.audioPlayer.currentTime=clamp((el.audioPlayer.currentTime||0)+1,0,state.duration);updatePlayhead(true);}});
+  window.addEventListener('resize',()=>{if(!state.display)return;const start=visualViewStartTime();if(visualState.autoHeight)syncAutoVisualHeight(true);syncVisualZoomUi();layoutSpectrogramStage(true);setVisualViewStartTime(start);drawAxes();drawOverlay();renderVisualSpectrogram();requestVisibleVisualTiles(true);});
 }
 
 attachEvents();
+attachSidePanelResizer();
 resetPanelsForInitialState();
 
 if (location.protocol === 'file:') {
   showToast('Abre con servidor local', 'No abras el HTML con doble clic. Usa http://localhost o GitHub Pages.', 9000);
 }
+
