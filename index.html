@@ -3,8 +3,8 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Etiquetador bioacústico por plantillas v45.8.3</title>
-  <link rel="stylesheet" href="styles.css?v=45.8.3" />
+  <title>Etiquetador bioacústico por plantillas v45.8.4</title>
+  <link rel="stylesheet" href="styles.css?v=45.8.4" />
 </head>
 <body>
   <div id="appShell" class="app-shell">
@@ -12,7 +12,7 @@
       <div class="brand">
         <img class="brand-logo" src="https://jocotoco.org.ec/dct/tmp_adjuntos/noEn/000/073/MatrizDatos_1757014841Logo-jocotoco2025.svg" alt="Logo Jocotoco" />
         <div>
-          <h1>Etiquetador bioacústico por plantillas <span class="version-tag">v45.8.3</span></h1>
+          <h1>Etiquetador bioacústico por plantillas <span class="version-tag">v45.8.4</span></h1>
           <p class="brand-subtitle">Plantillas acústicas + búsqueda por similitud + visor multirresolución</p>
         </div>
       </div>
@@ -218,7 +218,7 @@
             </div>
             <div id="templatePager" class="template-pager template-pager-top">Sin plantillas</div>
 
-            <div class="template-editor-grid">
+            <div id="templateEditorGrid" class="template-editor-grid preview-hidden">
               <div class="template-fields-card">
                 <div class="template-subtitle">Definición de la plantilla</div>
                 <label class="template-label-field">Etiqueta<input id="roiLabel" class="roi-label-input" type="text" placeholder="Ej. especie, código o clase" /></label>
@@ -227,7 +227,7 @@
                 </div>
                 <label class="checkline compound-check template-multi-check"><input id="useMultiSamples" type="checkbox" /><span>Usar varias muestras</span><button type="button" class="info-dot" data-tip="Permite combinar varias muestras del mismo fonotipo. La app alinea las muestras y construye una plantilla compuesta robusta.">i</button></label>
               </div>
-              <div class="template-preview-card-main">
+              <div id="templatePreviewCard" class="template-preview-card-main is-hidden" aria-hidden="true">
                 <div class="sample-preview-title">Vista previa de la plantilla</div>
                 <canvas id="samplePreviewCanvas" class="sample-preview" width="420" height="150" aria-label="Vista previa de la plantilla efectiva"></canvas>
                 <div id="sampleProgress" class="sample-progress is-hidden"><div class="sample-progress-track"><div class="sample-progress-bar"></div></div><div class="sample-progress-text">Plantilla compuesta lista.</div></div>
@@ -318,7 +318,7 @@
 
   <input id="fileInput" type="file" accept=".wav,.mp3,.flac,.ogg,.m4a,audio/*" hidden />
 
-  <script src="src/colormaps.js?v=45.8.3"></script>
-  <script src="src/app.js?v=45.8.3"></script>
+  <script src="src/colormaps.js?v=45.8.4"></script>
+  <script src="src/app.js?v=45.8.4"></script>
 </body>
 </html>

@@ -198,6 +198,8 @@ const el = {
   useMultiSamples: document.getElementById('useMultiSamples'),
   sampleEstimator: document.getElementById('sampleEstimator'),
   samplePanel: document.getElementById('samplePanel'),
+  templateEditorGrid: document.getElementById('templateEditorGrid'),
+  templatePreviewCard: document.getElementById('templatePreviewCard'),
   samplePreviewCanvas: document.getElementById('samplePreviewCanvas'),
   samplePreviewMeta: document.getElementById('samplePreviewMeta'),
   sampleSummary: document.getElementById('sampleSummary'),
@@ -589,6 +591,17 @@ function currentPreviewSupport(tpl = getActiveTemplate()) {
   return isRoiValid(state.roi) ? state.roi : null;
 }
 
+function syncTemplatePreviewVisibility(tpl = getActiveTemplate()) {
+  const support = currentPreviewSupport(tpl);
+  const visible = Boolean(support && isRoiValid(support));
+  if (el.templatePreviewCard) {
+    el.templatePreviewCard.classList.toggle('is-hidden', !visible);
+    el.templatePreviewCard.setAttribute('aria-hidden', visible ? 'false' : 'true');
+  }
+  if (el.templateEditorGrid) el.templateEditorGrid.classList.toggle('preview-hidden', !visible);
+  return visible;
+}
+
 function desiredPreviewAspectFromRoi(roi) {
   if (!roi || !state.display) return 1.8;
   const timePx = Math.max(18, Math.abs(timeToX(roi.tmax) - timeToX(roi.tmin)) || 18);
@@ -632,9 +645,15 @@ function syncSamplePreviewCanvasSize(tpl = getActiveTemplate()) {
 }
 
 function drawSamplePreview(tpl = getActiveTemplate()) {
-  syncSamplePreviewCanvasSize(tpl);
+  const previewVisible = syncTemplatePreviewVisibility(tpl);
   const canvas = el.samplePreviewCanvas;
   if (!canvas) return;
+  if (!previewVisible) {
+    state.samplePreviewToken++;
+    setSampleProgress('', 0, false);
+    return;
+  }
+  syncSamplePreviewCanvasSize(tpl);
   const ctx = canvas.getContext('2d');
   const w = canvas.width;
   const h = canvas.height;

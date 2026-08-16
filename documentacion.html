@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Documentación v45.8 · Bioacoustic Template Labeler</title>
+  <title>Documentación v45.8.4 · Bioacoustic Template Labeler</title>
   <style>
     :root {
       --bg: #ffffff;
@@ -51,64 +51,52 @@
       gap: 10px;
       padding-bottom: 14px;
       border-bottom: 1px solid var(--border);
-      margin-bottom: 14px;
+      margin-bottom: 12px;
     }
     aside img { width: 42px; height: 42px; object-fit: contain; background: white; border-radius: 10px; border: 1px solid var(--border); padding: 4px; }
     aside strong { display: block; color: var(--heading); line-height: 1.2; }
     aside span { display: block; color: var(--muted); font-size: 12px; margin-top: 2px; }
+    .doc-search { margin: 0 0 14px; }
+    .search-box { position: relative; }
+    .search-box svg { position: absolute; left: 10px; top: 50%; transform: translateY(-50%); width: 16px; height: 16px; fill: none; stroke: #64748b; stroke-width: 2; stroke-linecap: round; }
+    #docSearch {
+      width: 100%; height: 38px; border: 1px solid #d9e1ea; border-radius: 9px; background: #fff;
+      padding: 7px 10px 7px 33px; color: var(--text); font: inherit; font-size: 13px; outline: none;
+    }
+    #docSearch:focus { border-color: #93b4ef; box-shadow: 0 0 0 3px rgba(37,99,235,.08); }
+    .search-results { display: none; margin-top: 7px; padding: 5px; border: 1px solid var(--border); border-radius: 9px; background: #fff; max-height: 260px; overflow: auto; }
+    .search-results.active { display: block; }
+    .search-result { display: block; padding: 7px 8px; border-radius: 7px; color: #334155; text-decoration: none; font-size: 12.5px; line-height: 1.35; }
+    .search-result:hover { background: #eef4ff; color: #174fa8; }
+    .search-result strong { font-size: 12.5px; }
+    .search-result small { display: block; margin-top: 2px; color: #718096; font-size: 11px; }
+    .search-empty { padding: 8px; color: var(--muted); font-size: 12px; }
+    .nav-group-label { margin: 14px 8px 4px; color: #94a3b8; font-size: 10px; font-weight: 800; text-transform: uppercase; letter-spacing: .08em; }
     nav a {
       display: block;
-      padding: 7px 8px;
+      padding: 6px 8px;
       color: #334155;
       text-decoration: none;
       border-radius: 8px;
-      font-size: 14px;
+      font-size: 13.5px;
     }
     nav a:hover { background: #eef2ff; color: var(--primary); }
     main { min-width: 0; }
-    .doc-header {
-      border-bottom: 1px solid var(--border);
-      padding-bottom: 22px;
-      margin-bottom: 28px;
-    }
-    h1, h2, h3 { color: var(--heading); line-height: 1.25; }
+    .doc-header { border-bottom: 1px solid var(--border); padding-bottom: 22px; margin-bottom: 28px; }
+    h1, h2, h3, h4 { color: var(--heading); line-height: 1.25; }
     h1 { font-size: 36px; margin: 0 0 8px; letter-spacing: -0.03em; }
     h2 { font-size: 25px; margin: 38px 0 12px; padding-top: 8px; border-top: 1px solid var(--border); }
     h3 { font-size: 18px; margin: 24px 0 8px; }
+    h4 { font-size: 15px; margin: 18px 0 6px; }
     p { margin: 0 0 14px; }
     .lead { color: var(--muted); font-size: 17px; max-width: 780px; }
-    .note {
-      background: #eff6ff;
-      border: 1px solid #bfdbfe;
-      border-left: 4px solid var(--primary);
-      padding: 12px 14px;
-      border-radius: 10px;
-      margin: 18px 0;
-    }
-    .warn {
-      background: #fff7ed;
-      border: 1px solid #fed7aa;
-      border-left: 4px solid #f97316;
-      padding: 12px 14px;
-      border-radius: 10px;
-      margin: 18px 0;
-    }
-    code {
-      background: var(--code);
-      border: 1px solid var(--border);
-      border-radius: 5px;
-      padding: 0.15em 0.35em;
-      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
-      font-size: 0.92em;
-    }
-    pre {
-      background: var(--code);
-      border: 1px solid var(--border);
-      border-radius: 10px;
-      padding: 14px 16px;
-      overflow: auto;
-      margin: 14px 0 20px;
-    }
+    .note, .warn, .math-note { padding: 12px 14px; border-radius: 10px; margin: 18px 0; }
+    .note { background: #eff6ff; border: 1px solid #bfdbfe; border-left: 4px solid var(--primary); }
+    .warn { background: #fff7ed; border: 1px solid #fed7aa; border-left: 4px solid #f97316; }
+    .math-note { background: #f5f3ff; border: 1px solid #ddd6fe; border-left: 4px solid #7c3aed; }
+    .pill { display: inline-block; border: 1px solid #dbe4ee; background: #f8fafc; border-radius: 999px; padding: 2px 7px; font-size: 12px; color: #475569; }
+    code { background: var(--code); border: 1px solid var(--border); border-radius: 5px; padding: 0.15em 0.35em; font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: .92em; }
+    pre { background: var(--code); border: 1px solid var(--border); border-radius: 10px; padding: 14px 16px; overflow: auto; margin: 14px 0 20px; }
     pre code { border: none; background: transparent; padding: 0; }
     ul, ol { padding-left: 24px; margin: 8px 0 16px; }
     li { margin: 4px 0; }
@@ -116,6 +104,11 @@
     th, td { border: 1px solid var(--border); padding: 9px 10px; text-align: left; vertical-align: top; }
     th { background: var(--soft); color: var(--heading); }
     .kbd { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; background: var(--code); border: 1px solid var(--border); padding: 2px 6px; border-radius: 6px; }
+    .flow { white-space: pre-wrap; font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; background: #fbfdff; border: 1px solid var(--border); border-radius: 10px; padding: 14px 16px; color: #334155; line-height: 1.5; }
+    details { border: 1px solid var(--border); border-radius: 10px; margin: 9px 0; background: #fff; }
+    summary { cursor: pointer; padding: 10px 12px; font-weight: 700; color: #334155; }
+    details > div { padding: 0 12px 12px; }
+    mark { background: #fef08a; color: inherit; border-radius: 2px; padding: 0 1px; }
     .footer { margin-top: 44px; padding-top: 18px; border-top: 1px solid var(--border); color: var(--muted); font-size: 14px; }
     @media (max-width: 980px) {
       .layout { grid-template-columns: 1fr; padding: 20px 16px 42px; }
@@ -129,29 +122,50 @@
   <script defer src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-chtml.js"></script>
 </head>
 <body>
-<!-- Timeline virtual v45.8: canvas fijo, zoom hasta 100 000 px/s, teselas priorizadas y fallback continuo. -->
   <div class="layout">
     <aside>
       <div class="logo">
         <img src="https://jocotoco.org.ec/dct/tmp_adjuntos/noEn/000/073/MatrizDatos_1757014841Logo-jocotoco2025.svg" alt="Logo Jocotoco">
-        <div>
-          <strong>Documentación</strong>
-          <span>Bioacoustic Template Labeler</span>
-        </div>
+        <div><strong>Documentación</strong><span>Bioacoustic Template Labeler · v45.8.4</span></div>
       </div>
-      <nav>
+
+      <div class="doc-search">
+        <div class="search-box">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="10.5" cy="10.5" r="6.5"/><path d="m15.5 15.5 5 5"/></svg>
+          <input id="docSearch" type="search" autocomplete="off" placeholder="Buscar en la documentación…" aria-label="Buscar en la documentación" />
+        </div>
+        <div id="searchResults" class="search-results" aria-live="polite"></div>
+      </div>
+
+      <nav id="docNav">
+        <div class="nav-group-label">Empezar</div>
         <a href="#inicio">Inicio rápido</a>
-        <a href="#ejecutar-local">Ejecutar localmente</a>
-        <a href="#github-pages">Publicar en GitHub Pages</a>
-        <a href="#flujo">Flujo de uso</a>
-        <a href="#interfaz">Interfaz</a>
-        <a href="#parametros">Parámetros</a>
-        <a href="#matematica">Formulación matemática</a>
-        <a href="#multiplantilla">Modo multi-plantilla</a>
-        <a href="#visor-v45">Visor multirresolución v45.8</a>
-        <a href="#actualizaciones">Actualizaciones técnicas</a>
-        <a href="#exportacion">Exportación CSV</a>
+        <a href="#ejecutar">Ejecutar localmente</a>
+        <a href="#conceptos">Conceptos clave</a>
+        <a href="#flujo">Flujo completo</a>
+        <a href="#interfaz">Interfaz y navegación</a>
+
+        <div class="nav-group-label">Usar</div>
+        <a href="#visualizacion">Configuración del espectrograma</a>
+        <a href="#plantillas">Plantillas</a>
+        <a href="#multimuestra">Varias muestras</a>
+        <a href="#busqueda">Búsqueda y autoajuste</a>
+        <a href="#resultados">Resultados y exportación</a>
+
+        <div class="nav-group-label">Entender</div>
+        <a href="#matematica">Fundamento matemático</a>
+        <a href="#metricas">Métricas de similitud</a>
+        <a href="#composicion">Matemática multimuestra</a>
+        <a href="#arquitectura">Arquitectura multirresolución</a>
+        <a href="#rendimiento">Rendimiento y caché</a>
+
+        <div class="nav-group-label">Referencia</div>
+        <a href="#atajos">Atajos</a>
+        <a href="#privacidad">Privacidad y despliegue</a>
         <a href="#problemas">Problemas frecuentes</a>
+        <a href="#mantenimiento">Mantenimiento del proyecto</a>
+        <a href="#cambios">Control de cambios</a>
+        <a href="#historial">Historial anterior</a>
         <a href="#arriba">Volver arriba</a>
       </nav>
     </aside>
@@ -159,391 +173,489 @@
     <main id="arriba">
       <header class="doc-header">
         <h1>Bioacoustic Template Labeler</h1>
-        <p class="lead">Aplicación web pura para marcar una plantilla sobre un espectrograma y buscar regiones acústicas similares por embeddings locales. Todo corre en el navegador: no hay servidor, no hay Python en producción y el audio no se sube a internet.</p>
+        <p class="lead">Manual de uso, referencia técnica y fundamento matemático de la herramienta. La aplicación permite construir plantillas acústicas sobre espectrogramas, comparar regiones candidatas y revisar resultados sin depender de un backend.</p>
       </header>
 
-      <section id="inicio">
+      <section id="inicio" data-search="quick start python localhost audio espectrograma plantilla">
         <h2>Inicio rápido</h2>
         <ol>
-          <li>Abre la aplicación desde <code>index.html</code> servida por un servidor local o desde GitHub Pages.</li>
-          <li>Pulsa <strong>Subir / cambiar audio</strong> o arrastra un audio en el modal inicial.</li>
-          <li>La aplicación decodifica el audio y construye el espectrograma automáticamente.</li>
-          <li>Arrastra una caja roja sobre el patrón acústico que quieres usar como plantilla.</li>
-          <li>Pulsa <strong>Guardar plantilla</strong>.</li>
-          <li>Ajusta o deja activo el <strong>autoajuste</strong> de score mínimo y separación entre ventanas.</li>
-          <li>Pulsa <strong>Buscar similares</strong>.</li>
-          <li>Exporta los candidatos como <strong>CSV</strong>, <strong>XLSX</strong> o <strong>TXT Audacity</strong>.</li>
+          <li>Sirve la carpeta mediante HTTP local.</li>
+          <li>Abre <code>http://localhost:8000</code>.</li>
+          <li>Pulsa <strong>Subir / cambiar audio</strong>.</li>
+          <li>Espera a que se construya el espectrograma.</li>
+          <li>Arrastra una ROI sobre el patrón acústico que quieres buscar.</li>
+          <li>Ajusta la etiqueta o activa <strong>Usar varias muestras</strong> si corresponde.</li>
+          <li>Pulsa <strong>Buscar coincidencias</strong>.</li>
+          <li>Revisa cajas y tabla; exporta CSV, XLSX o TXT Audacity.</li>
         </ol>
-        <div class="note">La construcción del espectrograma es automática después de subir el audio. No hay un botón separado para construirlo.</div>
+        <div class="note"><strong>v45.8.4:</strong> la vista previa de plantilla no ocupa espacio hasta que existe una ROI/plantilla válida. En cuanto se selecciona una región acústica, aparece el preview proporcional correspondiente.</div>
       </section>
 
-      <section id="ejecutar-local">
+      <section id="ejecutar" data-search="python conda node http server github pages cache localhost">
         <h2>Ejecutar localmente</h2>
-        <p>No abras el archivo con doble clic como <code>file:///...</code>. Algunos navegadores bloquean los Web Workers y la carga de módulos locales. Sirve la carpeta como sitio web local.</p>
-        <h3>Con Conda o Python</h3>
-        <pre><code>cd C:\Users\Usuario\Downloads\bioacoustic-template-labeler-wizard
+        <p>No abras el proyecto como <code>file:///...</code>. Los Web Workers y ciertos recursos pueden quedar restringidos. Usa un servidor HTTP local.</p>
+        <h3>Python / Conda</h3>
+        <pre><code>cd bioacoustic-template-labeler-wizard-v45.8.4
 python -m http.server 8000</code></pre>
-        <p>Luego abre:</p>
+        <p>Abre:</p>
         <pre><code>http://localhost:8000</code></pre>
-        <h3>Con Node.js</h3>
+        <h3>Node.js sin caché durante desarrollo</h3>
         <pre><code>npx --yes http-server . -p 8000 -c-1</code></pre>
+        <div class="warn"><strong>Caché:</strong> cuando se prueban varias versiones sucesivas en el mismo <code>localhost:8000</code>, el navegador puede conservar recursos antiguos. La aplicación usa cache-busting por versión; para desarrollo, <code>-c-1</code> evita gran parte de estos problemas.</div>
+        <h3>GitHub Pages</h3>
+        <p>Es una aplicación estática: puede publicarse dejando <code>index.html</code> en la raíz del repositorio y habilitando GitHub Pages sobre la rama correspondiente.</p>
       </section>
 
-      <section id="github-pages">
-        <h2>Publicar en GitHub Pages</h2>
+      <section id="conceptos" data-search="audio espectrograma roi plantilla muestra compuesto coincidencia match candidato fonotipo">
+        <h2>Conceptos clave</h2>
+        <div class="flow">Audio
+  ↓
+Espectrograma
+  ↓
+ROI (región seleccionada)
+  ↓
+Plantilla
+  ├── una muestra
+  └── varias muestras → plantilla compuesta
+  ↓
+Ventanas candidatas
+  ↓
+Score de similitud
+  ↓
+Coincidencias / eventos
+  ↓
+Tabla + cajas + exportación</div>
+        <table>
+          <thead><tr><th>Término</th><th>Significado</th></tr></thead>
+          <tbody>
+            <tr><td>ROI</td><td>Rectángulo definido por tiempo y frecuencia: la región acústica marcada por el usuario.</td></tr>
+            <tr><td>Plantilla</td><td>Referencia acústica usada para comparar ventanas del audio. Puede ser simple o compuesta.</td></tr>
+            <tr><td>Muestra</td><td>Ejemplo individual del mismo fonotipo usado dentro de una plantilla multimuestra.</td></tr>
+            <tr><td>Plantilla compuesta</td><td>Representación construida a partir de varias muestras alineadas.</td></tr>
+            <tr><td>Ventana candidata</td><td>Región del audio con dimensiones comparables a la plantilla sobre la que se calcula un score.</td></tr>
+            <tr><td>Coincidencia</td><td>Candidato aceptado después de umbral, prominencia y agrupamiento temporal.</td></tr>
+          </tbody>
+        </table>
+      </section>
+
+      <section id="flujo" data-search="wizard workflow plantilla búsqueda resultados">
+        <h2>Flujo completo</h2>
         <ol>
-          <li>Crea un repositorio en GitHub.</li>
-          <li>Sube todo el contenido del proyecto, dejando <code>index.html</code> en la raíz.</li>
-          <li>Entra a <span class="kbd">Settings</span> → <span class="kbd">Pages</span>.</li>
-          <li>Selecciona <strong>Deploy from a branch</strong>.</li>
-          <li>Selecciona la rama <code>main</code> y carpeta <code>/root</code>.</li>
-          <li>Guarda y espera la URL pública.</li>
-        </ol>
-        <div class="note">GitHub Pages sirve archivos estáticos. Esta app funciona porque todo el procesamiento se realiza en JavaScript dentro del navegador.</div>
-      </section>
-
-      <section id="flujo">
-        <h2>Flujo de uso</h2>
-        <p>El flujo está diseñado como una sola pantalla de trabajo con guía contextual:</p>
-        <ol>
-          <li><strong>Subir audio:</strong> se carga el archivo local.</li>
-          <li><strong>Procesamiento automático:</strong> se decodifica el audio y se calcula el espectrograma.</li>
-          <li><strong>Exploración:</strong> el reproductor inferior controla el audio y el espectrograma puede seguir la reproducción.</li>
-          <li><strong>ROI:</strong> se dibuja una caja sobre el patrón acústico.</li>
-          <li><strong>Plantilla:</strong> la ROI se guarda como referencia.</li>
-          <li><strong>Búsqueda:</strong> se comparan ventanas candidatas contra la plantilla.</li>
-          <li><strong>Resultados:</strong> se dibujan cajas azules y se llena la tabla de candidatos.</li>
-        <p>La tabla de resultados puede ordenarse haciendo clic en los encabezados de columna. Por defecto, se mantiene el orden de mayor score primero.</p>
-
-          <li><strong>Exportación:</strong> se descarga un CSV con las cajas candidatas.</li>
+          <li><strong>Carga:</strong> el navegador decodifica el audio y prepara la representación analítica.</li>
+          <li><strong>Vista general:</strong> el visor genera un overview multirresolución y queda disponible para navegar.</li>
+          <li><strong>Exploración:</strong> reproduce, desplázate, usa Ver todo o profundiza en tiempo/frecuencia.</li>
+          <li><strong>Selección:</strong> arrastra sobre el espectrograma para definir la ROI.</li>
+          <li><strong>Plantilla:</strong> asigna etiqueta, ajusta límites o agrega múltiples muestras del mismo fonotipo.</li>
+          <li><strong>Búsqueda:</strong> selecciona métrica y perfil de autoajuste.</li>
+          <li><strong>Revisión:</strong> inspecciona las cajas y la tabla ordenada por score.</li>
+          <li><strong>Exportación:</strong> guarda los resultados para análisis posterior o Audacity.</li>
         </ol>
       </section>
 
-      <section id="interfaz">
-        <h2>Interfaz</h2>
+      <section id="interfaz" data-search="reglas zoom ver todo reproducción panel lateral cursor playhead scroll">
+        <h2>Interfaz y navegación</h2>
         <table>
           <thead><tr><th>Zona</th><th>Función</th></tr></thead>
           <tbody>
-            <tr><td>Cabecera</td><td>Logo, nombre de la app, subir/cambiar audio, exportar CSV y documentación.</td></tr>
-            <tr><td>Espectrograma</td><td>Área principal de visualización, con ROI roja, matches azules, eje de frecuencia fijo y eje temporal desplazable.</td></tr>
-            <tr><td>Panel derecho</td><td>Guía, configuración del espectrograma, ROI, búsqueda por embedding y tabla de resultados.</td></tr>
-            <tr><td>Reproductor inferior</td><td>Barra de reproducción limpia, sin metadatos adicionales.</td></tr>
+            <tr><td>Cabecera</td><td>Versión, carga/cambio de audio y acceso a ayuda.</td></tr>
+            <tr><td>Barra de navegación</td><td>Ver todo, zoom, escala, paleta y estado de la ventana temporal visible.</td></tr>
+            <tr><td>Espectrograma</td><td>Visor principal con reglas permanentes, cursor, ROI, plantillas y coincidencias.</td></tr>
+            <tr><td>Reproductor</td><td>Play/pausa, ±1 s, posición, scrubber, mute y velocidad.</td></tr>
+            <tr><td>Panel derecho</td><td>Guía, configuración, plantilla, búsqueda y resultados. Es redimensionable.</td></tr>
           </tbody>
         </table>
-        <p>El eje de frecuencia permanece visible mientras el espectrograma se desplaza horizontalmente. El botón <strong>Centrar cursor</strong> centra el visor en el tiempo actual del audio.</p>
+        <h3>Zoom</h3>
+        <ul>
+          <li><strong>Ver todo:</strong> encaja toda la duración.</li>
+          <li><strong>+/−:</strong> zoom temporal alrededor del punto de anclaje.</li>
+          <li><strong>Zoom selección:</strong> selección rectangular para profundizar simultáneamente en tiempo y frecuencia.</li>
+          <li><strong>Regla temporal:</strong> arrastre horizontal para seleccionar un intervalo.</li>
+          <li><strong>Regla frecuencial:</strong> arrastre vertical para seleccionar un rango.</li>
+        </ul>
+        <p>El timeline virtual permite zoom temporal profundo sin construir un canvas de millones de píxeles. El área física de dibujo permanece ligada al viewport.</p>
       </section>
 
-      <section id="parametros">
-        <h2>Parámetros</h2>
-        <h3>Configuración del espectrograma</h3>
+      <section id="visualizacion" data-search="lineal mel logaritmica paleta gamma contraste brillo fft visual detalle temporal altura">
+        <h2>Configuración del espectrograma</h2>
+        <h3>Escala de frecuencia</h3>
         <ul>
-          <li><strong>Escala de frecuencia:</strong> lineal o mel.</li>
-          <li><strong>Color:</strong> magma o blanco y negro.</li>
+          <li><strong>Lineal:</strong> posición vertical proporcional a Hz.</li>
+          <li><strong>Mel:</strong> remapeo perceptual del eje.</li>
+          <li><strong>Logarítmica:</strong> remapeo logarítmico suave del eje.</li>
         </ul>
-        <h3>ROI plantilla</h3>
-        <ul>
-          <li><code>tmin</code>, <code>tmax</code>: límites temporales en segundos.</li>
-          <li><code>fmin</code>, <code>fmax</code>: límites de frecuencia en Hz.</li>
-        </ul>
-        <h3>Búsqueda por embedding</h3>
-        <ul>
-          <li><strong>Método de comparación:</strong> coseno, correlación normalizada, euclidiana normalizada o correlación cruzada.</li>
-          <li><strong>Score mínimo:</strong> umbral desde 0 hasta 0.99. Valores altos son más estrictos; valores bajos muestran más coincidencias, pero pueden incluir ruido.</li>
-          <li><strong>Separación entre ventanas:</strong> cada cuántos segundos se prueba una nueva ventana candidata. Menor es más fino y lento; mayor es más rápido pero puede saltarse eventos.</li>
-          <li><strong>Autoajuste:</strong> al buscar, estima la separación según la duración de la ROI, convierte la curva densa de scores en picos/islas temporales, excluye la plantilla original para estimar el corte y usa barandas internas para evitar tanto cientos de cajas como una sola coincidencia cuando sí existen más candidatos razonables.</li>
-        </ul>
+        <div class="note">Mel y Logarítmica son transformaciones de <strong>visualización</strong>. No convierten el motor analítico a un banco de filtros mel ni cambian los resultados de búsqueda.</div>
+        <h3>Paleta, brillo, contraste y gamma</h3>
+        <p>Estos parámetros transforman el valor normalizado únicamente para colorear la imagen. No invalidan plantillas ni búsquedas.</p>
+        <h3>FFT visual y detalle temporal</h3>
+        <p>En <strong>Auto</strong>, el visor adapta el tamaño de FFT según el zoom temporal y frecuencial. El usuario puede fijar una FFT visual manual si desea inspeccionar un comportamiento concreto.</p>
       </section>
 
-      <section id="matematica">
-        <h2>Formulación matemática</h2>
-        <p>Esta sección describe el problema completo que resuelve la app: a partir de una plantilla marcada por el usuario en el espectrograma, se buscan eventos acústicos similares en el mismo audio.</p>
-
-        <h3>1. Señal y espectrograma</h3>
-        <p>Sea $x[n]$ una señal de audio discreta, donde $n$ indexa muestras. La aplicación calcula una transformada de Fourier de tiempo corto:</p>
-        <p>$$X[k,m] = \sum_n x[n] w[n - mH] e^{-2\pi i k n / N}$$</p>
-        <p>donde:</p>
-        <ul>
-          <li>$N$ es el tamaño de la ventana de Fourier.</li>
-          <li>$H$ es el salto entre ventanas, también llamado <em>hop length</em>.</li>
-          <li>$w$ es la ventana de análisis.</li>
-          <li>$k$ indexa la frecuencia.</li>
-          <li>$m$ indexa el tiempo.</li>
-        </ul>
-        <p>Se trabaja con la magnitud logarítmica en decibeles:</p>
-        <p>$$S[k,m] = 20\log_{10}(|X[k,m]| + \varepsilon)$$</p>
-        <p>Aquí $S$ es la matriz del espectrograma y $\varepsilon > 0$ evita problemas numéricos con logaritmos de cero.</p>
-
-        <h3>2. ROI o plantilla acústica</h3>
-        <p>El usuario dibuja una región de interés, o ROI, sobre el espectrograma:</p>
-        <p>$$R = [t_{\min}, t_{\max}, f_{\min}, f_{\max}]$$</p>
-        <p>donde $t_{\min}$ y $t_{\max}$ son los límites temporales en segundos, y $f_{\min}$ y $f_{\max}$ son los límites de frecuencia en Hz.</p>
-        <p>La ROI se convierte a índices discretos del espectrograma:</p>
-        <p>$$R \rightarrow [i_{f0}, i_{f1}, i_{t0}, i_{t1}]$$</p>
-        <p>y se extrae el patch de plantilla:</p>
-        <p>$$P_R = S[i_{f0}:i_{f1}, i_{t0}:i_{t1}]$$</p>
-        <p>La duración de la plantilla es:</p>
-        <p>$$T_R = t_{\max} - t_{\min}$$</p>
-
-
-
-        <h3>2b. Plantilla compuesta con varias muestras</h3>
-        <p>Opcionalmente, una plantilla puede construirse a partir de varias muestras del mismo fonotipo marcadas por el usuario:</p>
-        <p>$$\mathcal{R} = \{R_1, R_2, \dots, R_L\}$$</p>
-        <p>Cada muestra $R_l$ tiene límites $t_{\min,l}$, $t_{\max,l}$, $f_{\min,l}$ y $f_{\max,l}$. Para que una muestra extrema no agrande artificialmente la plantilla, el soporte frecuencial se define con cuantiles:</p>
-        <p>$$f_{\min}^{*} = Q_{0.10}(f_{\min,1}, \dots, f_{\min,L})$$</p>
-        <p>$$f_{\max}^{*} = Q_{0.90}(f_{\max,1}, \dots, f_{\max,L})$$</p>
-        <p>La duración común se toma como la mayor duración observada:</p>
-        <p>$$T^{*} = \max_l(t_{\max,l} - t_{\min,l})$$</p>
-        <p>Para cada muestra se extrae un patch $P_l$. Primero se calcula un centroide de energía para obtener una alineación inicial. Si $P_l[a,b]$ es el valor del patch en frecuencia discreta $a$ y tiempo discreto $b$, y $w_{a,b}^{(l)}$ es un peso de saliencia, entonces:</p>
-        <p>$$c_t^{(l)} = \frac{\sum_{a,b} b w_{a,b}^{(l)}}{\sum_{a,b} w_{a,b}^{(l)} + \varepsilon}$$</p>
-        <p>$$c_f^{(l)} = \frac{\sum_{a,b} a w_{a,b}^{(l)}}{\sum_{a,b} w_{a,b}^{(l)} + \varepsilon}$$</p>
-        <p>Luego se refina la alineación con una búsqueda local de desplazamientos. La aplicación escoge una muestra de referencia $P_{ref}$ mediante un medoide inicial y, para cada muestra, busca:</p>
-        <p>$$\Delta_l^{*} = \arg\max_{\Delta t, \Delta f} \operatorname{Sim}_w(P_{ref}, \operatorname{shift}(P_l, \Delta t, \Delta f))$$</p>
-        <p>La función $\operatorname{Sim}_w$ es una correlación ponderada. Si $A$ y $B$ son dos patches normalizados, y $w_j$ es el peso saliente del píxel $j$, se define:</p>
-        <p>$$\bar{A}_w = \frac{\sum_j w_j A_j}{\sum_j w_j + \varepsilon}, \qquad \bar{B}_w = \frac{\sum_j w_j B_j}{\sum_j w_j + \varepsilon}$$</p>
-        <p>$$\operatorname{Sim}_w(A,B) = \frac{\sum_j w_j (A_j - \bar{A}_w)(B_j - \bar{B}_w)}{\sqrt{\sum_j w_j (A_j - \bar{A}_w)^2}\sqrt{\sum_j w_j (B_j - \bar{B}_w)^2} + \varepsilon}$$</p>
-        <p>Esta ponderación busca alinear la huella espectral del canto, no el fondo acústico.</p>
-        <p>Una vez alineadas las muestras se obtienen patches $P_1^{aligned}, \dots, P_L^{aligned}$. El selector <strong>Método de plantilla</strong> construye la plantilla efectiva $P^{*}$ con una de estas opciones:</p>
-        <p><strong>Medoide:</strong> usa la muestra real más representativa del conjunto:</p>
-        <p>$$P^{*} = P_k^{aligned}, \qquad k = \arg\max_i \frac{1}{L-1}\sum_{j \neq i} \operatorname{Sim}(P_i^{aligned}, P_j^{aligned})$$</p>
-        <p><strong>Mediana alineada:</strong> combina las muestras alineadas por mediana píxel a píxel:</p>
-        <p>$$P^{*}[a,b] = \operatorname{mediana}\{P_1^{aligned}[a,b], \dots, P_L^{aligned}[a,b]\}$$</p>
-        <p><strong>Promedio alineado:</strong> promedia las muestras alineadas:</p>
-        <p>$$P^{*}[a,b] = \frac{1}{L}\sum_{l=1}^{L} P_l^{aligned}[a,b]$$</p>
-        <p><strong>Consenso NCC:</strong> usa la alineación por similitud ponderada y conserva una huella robusta mediante un percentil alto por píxel:</p>
-        <p>$$P^{*}[a,b] = Q_{0.70}(P_1^{aligned}[a,b], \dots, P_L^{aligned}[a,b])$$</p>
-        <p><strong>Consenso ponderado:</strong> promedia las muestras alineadas con pesos de calidad $\alpha_l$ derivados de la similitud de alineación:</p>
-        <p>$$P^{*}[a,b] = \frac{\sum_{l=1}^{L} \alpha_l P_l^{aligned}[a,b]}{\sum_{l=1}^{L} \alpha_l + \varepsilon}$$</p>
-        <p>En todos los casos la vista previa muestra la plantilla efectiva $P^{*}$ que se usará para construir el embedding o la representación de comparación.</p>
-
-        <h3>3. Embedding del patch</h3>
-        <p>Cada patch se normaliza localmente para reducir el efecto de intensidad absoluta:</p>
-        <p>$$P_{\text{norm}} = \frac{P - \min(P)}{\max(P) - \min(P) + \varepsilon}$$</p>
-        <p>Luego se redimensiona a $48 \times 48$ y se aplana:</p>
-        <p>$$z = \operatorname{vec}(\operatorname{resize}(P_{\text{norm}}, 48, 48))$$</p>
-        <p>Como $48 \times 48 = 2304$, cada patch queda representado inicialmente por un vector $z \in \mathbb{R}^{2304}$.</p>
-        <p>Después se estandariza y se normaliza con norma euclidiana:</p>
-        <p>$$\tilde{z} = \frac{z - \mu_z}{\sigma_z + \varepsilon}$$</p>
-        <p>$$e = \frac{\tilde{z}}{\|\tilde{z}\|_2 + \varepsilon}$$</p>
-        <p>El vector $e$ es el embedding usado para comparar la plantilla con otras ventanas del audio.</p>
-
-        <h3>4. Ventanas candidatas y scores</h3>
-        <p>La aplicación recorre el audio con ventanas candidatas del mismo tamaño temporal y frecuencial que la ROI. Si la separación entre ventanas es $\Delta t$, se evalúan ventanas en tiempos:</p>
-        <p>$$t_j = j\Delta t$$</p>
-        <p>Para cada ventana candidata $C_j$ se extrae un patch $P_j$, se calcula su embedding $e_j$ y se obtiene un score de similitud:</p>
-        <p>$$s_j = \operatorname{score}(R, C_j)$$</p>
-        <p>La app mantiene todos los métodos de comparación en una escala común de 0 a 1, donde 1 indica mayor parecido.</p>
-        <p>Para coseno y correlación normalizada se usa:</p>
-        <p>$$s_j = \max(0, e_R^\top e_j)$$</p>
-        <p>Para distancia euclidiana normalizada:</p>
-        <p>$$d_j = \|e_R - e_j\|_2$$</p>
-        <p>$$s_j = \max\left(0, 1 - \frac{d_j}{2}\right)$$</p>
-        <p>Como los embeddings están normalizados, esta transformación permite interpretar también la métrica euclidiana como un score entre 0 y 1.</p>
-        <p>Los métodos de correlación cruzada comparan representaciones reducidas de la plantilla y la ventana candidata mediante correlación normalizada local. En la correlación cruzada temporal se permite un pequeño desplazamiento horizontal. En la correlación cruzada 2D se permiten desplazamientos en tiempo y frecuencia:</p>
-        <p>$$s(P,Q) = \max_{\Delta t, \Delta f} \operatorname{NCC}(P, \operatorname{shift}(Q, \Delta t, \Delta f))\, \operatorname{pen}(\Delta t, \Delta f)$$</p>
-        <p>La <strong>correlación 2D multi-escala</strong> agrega pequeñas escalas globales de tiempo y frecuencia:</p>
-        <p>$$s(P,Q) = \max_{a_t, a_f, \Delta t, \Delta f} \operatorname{NCC}(P, T_{a_t,a_f,\Delta t,\Delta f}(Q))\, \operatorname{pen}(a_t, a_f, \Delta t, \Delta f)$$</p>
-        <p>Aquí $a_t$ y $a_f$ son escalas temporales y frecuenciales cercanas a 1. La penalización evita que deformaciones o desplazamientos grandes produzcan coincidencias demasiado permisivas. Este método es más flexible, pero puede tardar más.</p>
-
-        <h3>5. De ventanas a eventos</h3>
-        <p>Las ventanas evaluadas no son todavía eventos finales. Muchas ventanas consecutivas pueden representar el mismo sonido. Por eso se agrupan candidatos cercanos y se conserva solo el mejor score de cada grupo temporal.</p>
-        <p>Si $w_R$ es el ancho de la plantilla en frames, se define una separación mínima interna entre eventos:</p>
-        <p>$$\Delta_{\text{evento}} = \gamma w_R$$</p>
-        <p>donde $\gamma$ es una constante interna. En la práctica esto evita que un solo evento acústico genere muchas cajas repetidas.</p>
-        <p>Después de esta supresión temporal, se obtiene una lista de picos o islas:</p>
-        <p>$$P = \{p_1, p_2, \dots, p_M\}$$</p>
-        <p>donde cada $p_i$ tiene un score $s_i$ y representa un candidato temporalmente separado.</p>
-
-        <h3>6. Autoajuste de parámetros</h3>
-        <p>Cuando está activo <strong>Autoajustar parámetros al buscar</strong>, la app estima automáticamente dos valores: la separación entre ventanas $\Delta t$ y el score mínimo $\tau$.</p>
-        <p>La separación entre ventanas se propone a partir de la duración de la ROI:</p>
-        <p>$$\Delta t = \operatorname{clip}(\alpha T_R, \Delta t_{\min}, \Delta t_{\max})$$</p>
-        <p>donde $\alpha$ es una fracción interna y $\operatorname{clip}$ limita el valor para que no sea ni demasiado fino ni demasiado grande.</p>
-        <p>Para estimar el score mínimo, primero se excluye la zona de la plantilla original al calcular el corte automático, de modo que el match trivial de la propia ROI no domine el umbral. Luego se ordenan los scores de los picos:</p>
-        <p>$$s_{(1)} \geq s_{(2)} \geq \dots \geq s_{(M)}$$</p>
-        <p>El umbral automático combina varias señales:</p>
-        <ul>
-          <li>un umbral de codo $\tau_{\text{codo}}$, obtenido de la curva de scores ordenados;</li>
-          <li>un umbral robusto de fondo $\tau_{\text{ruido}}$, basado en mediana y dispersión robusta;</li>
-          <li>un umbral relativo $\tau_{\text{rel}}$, definido como una fracción del mejor score;</li>
-          <li>barandas internas para evitar dos extremos: cientos de cajas o una sola caja si hay más candidatos razonables.</li>
-        </ul>
-        <p>Conceptualmente:</p>
-        <p>$$\tau_0 = \max(\tau_{\text{codo}}, \tau_{\text{ruido}}, \tau_{\text{rel}}, \tau_{\min})$$</p>
-        <p>Luego se ajusta $\tau_0$ usando límites internos de cantidad:</p>
-        <p>$$N_{\min}^{\text{objetivo}} \leq N(\tau) \leq N_{\max}^{\text{auto}}$$</p>
-        <p>donde $N(\tau)$ es el número de picos con score mayor o igual a $\tau$. Estos límites son objetivos, no reglas para inventar resultados. Si no existen suficientes coincidencias razonables, la app muestra las que existan.</p>
-        <p>Finalmente se conservan los eventos que cumplen:</p>
-        <p>$$s_i \geq \tau$$</p>
-        <p>Cuando termina una búsqueda con autoajuste, la casilla de autoajuste se desmarca automáticamente. Así los ajustes manuales posteriores de score y separación sí tienen efecto inmediato. Al subir un nuevo audio, la casilla vuelve a quedar activa.</p>
-
-        <h3>7. Interpretación</h3>
-        <p>Las cajas azules son candidatos similares a la plantilla, no identificaciones taxonómicas definitivas. El flujo recomendado es usar la búsqueda automática como primer filtro, revisar visualmente los candidatos y exportar los resultados para validación posterior.</p>
+      <section id="plantillas" data-search="roi tmin tmax fmin fmax etiqueta fonotipo preview vista previa">
+        <h2>Plantillas</h2>
+        <p>Una plantilla está definida por una ROI:</p>
+        <p>$$R=[t_{\min},t_{\max}]\times[f_{\min},f_{\max}]$$</p>
+        <p>Los campos temporales se expresan en segundos y los campos de frecuencia en kHz en la interfaz.</p>
+        <h3>Vista previa</h3>
+        <p>La vista previa aparece únicamente después de marcar o seleccionar una plantilla válida. Antes de eso, el espacio se dedica completamente a los campos de definición.</p>
+        <p>El preview preserva la proporción geométrica de la selección y usa tiempo relativo: el eje temporal representa desde el inicio de la plantilla hasta su duración, no el tiempo absoluto del audio.</p>
+        <h3>Varias plantillas</h3>
+        <p>Cada plantilla funciona como una unidad independiente: etiqueta, color, parámetros de búsqueda, muestras y resultados se conservan por separado.</p>
       </section>
 
-      <section id="exportacion">
-        <h2>Exportación</h2>
-        <p>Los resultados pueden descargarse como CSV, XLSX o TXT compatible con etiquetas espectrales de Audacity. El nombre base de exportación coincide con el nombre del audio subido.</p>
-        <pre><code>audio,tmin,tmax,fmin,fmax,etiqueta,score,estado</code></pre>
-        <p>El TXT Audacity usa dos líneas por coincidencia: una para tiempos y etiqueta, y otra para la banda de frecuencia. Estos resultados son candidatos, no validaciones definitivas.</p>
+      <section id="multimuestra" data-search="varias muestras consenso ncc ponderado medoid medoide mediana promedio alineado">
+        <h2>Plantillas con varias muestras</h2>
+        <p>Activa <strong>Usar varias muestras</strong> cuando varias ROI representan el mismo fonotipo y quieres construir una referencia más robusta.</p>
+        <p>Métodos disponibles:</p>
+        <table>
+          <thead><tr><th>Método</th><th>Idea</th></tr></thead>
+          <tbody>
+            <tr><td>Consenso NCC</td><td>Alinea muestras y toma un consenso robusto por píxel basado actualmente en el cuantil 0.70.</td></tr>
+            <tr><td>Consenso ponderado</td><td>Promedio ponderado; las muestras más coherentes con la referencia reciben mayor peso.</td></tr>
+            <tr><td>Medoide</td><td>Selecciona una muestra real representativa minimizando disimilitud en la representación reducida.</td></tr>
+            <tr><td>Mediana alineada</td><td>Mediana por píxel después de alinear las muestras.</td></tr>
+            <tr><td>Promedio alineado</td><td>Promedio por píxel después de alinear las muestras.</td></tr>
+          </tbody>
+        </table>
+        <p>La app mantiene caché por plantilla/método. Cambiar entre métodos ya calculados reutiliza el resultado mientras no cambien las muestras.</p>
       </section>
 
-      <section id="problemas">
+      <section id="busqueda" data-search="coseno correlacion euclidiana cruzada 2d multiescala score autoajuste conservador balanceado sensible stride separación">
+        <h2>Búsqueda y autoajuste</h2>
+        <h3>Métodos de comparación</h3>
+        <ul>
+          <li>Coseno.</li>
+          <li>Correlación normalizada.</li>
+          <li>Euclidiana normalizada.</li>
+          <li>Correlación cruzada temporal.</li>
+          <li>Correlación cruzada 2D.</li>
+          <li>Correlación 2D multi-escala.</li>
+        </ul>
+        <h3>Score mínimo</h3>
+        <p>Todos los métodos se llevan a una interfaz de score entre 0 y 1. Un valor alto es más estricto; uno bajo aumenta sensibilidad y falsos positivos potenciales.</p>
+        <h3>Separación entre ventanas</h3>
+        <p>Controla la densidad con la que se prueban ventanas candidatas. En auto, el paso temporal se deriva de la duración de plantilla y se limita para conservar sensibilidad en eventos cortos.</p>
+        <h3>Autoajuste</h3>
+        <table>
+          <thead><tr><th>Perfil</th><th>Uso</th></tr></thead>
+          <tbody>
+            <tr><td>Ninguno</td><td>Respeta los parámetros manuales.</td></tr>
+            <tr><td>Conservador</td><td>Umbral más exigente y menor tolerancia a picos débiles.</td></tr>
+            <tr><td>Balanceado</td><td>Recomendado como primera búsqueda: combina nivel absoluto, fondo robusto, codo, relación con el máximo y prominencia local.</td></tr>
+            <tr><td>Sensible</td><td>Relaja pisos y permite más candidatos si sobresalen del fondo local.</td></tr>
+          </tbody>
+        </table>
+      </section>
+
+      <section id="resultados" data-search="tabla score csv xlsx txt audacity exportacion cajas">
+        <h2>Resultados y exportación</h2>
+        <p>Las coincidencias aceptadas se dibujan sobre el espectrograma y se listan en la tabla. La tabla conserva campos de etiqueta, score y límites temporales/frecuenciales.</p>
+        <h3>CSV</h3><p>Formato tabular abierto para análisis posterior.</p>
+        <h3>XLSX</h3><p>Versión de hoja de cálculo para revisión y distribución.</p>
+        <h3>TXT Audacity</h3><p>Exporta etiquetas temporales y frecuencia para importación en pistas de etiquetas de Audacity.</p>
+      </section>
+
+      <section id="matematica" data-search="matematica stft fourier fft ventana hop nyquist mel log gamma roi embedding normalización">
+        <h2>Fundamento matemático</h2>
+        <p>La herramienta se fundamenta en una representación tiempo–frecuencia y en comparaciones de patrones normalizados. Esta sección documenta la formulación utilizada o aproximada por la implementación.</p>
+
+        <h3>1. Señal discreta y Nyquist</h3>
+        <p>Sea $x[n]$ una señal de audio muestreada a frecuencia $f_s$. La máxima frecuencia representable sin aliasing es:</p>
+        <p>$$f_N=\frac{f_s}{2}$$</p>
+
+        <h3>2. STFT</h3>
+        <p>La Transformada de Fourier de Tiempo Corto se expresa como:</p>
+        <p>$$X(m,k)=\sum_n x[n]w[n-mH]e^{-j2\pi kn/N_{\mathrm{FFT}}}$$</p>
+        <p>donde $w$ es la ventana, $H$ el hop, $m$ el índice temporal y $k$ el bin de frecuencia.</p>
+        <p>Una representación logarítmica de magnitud puede escribirse como:</p>
+        <p>$$S(m,k)=20\log_{10}(|X(m,k)|+\varepsilon)$$</p>
+        <p>Las escalas aproximadas de resolución son:</p>
+        <p>$$\Delta f\approx\frac{f_s}{N_{\mathrm{FFT}}},\qquad \Delta t\approx\frac{H}{f_s}$$</p>
+        <div class="math-note"><strong>Compromiso tiempo–frecuencia:</strong> una ventana FFT más larga mejora resolución frecuencial pero empeora localización temporal. Una ventana más corta hace lo contrario. El visor v45.8 usa esta relación para adaptar la STFT visual durante zoom profundo.</div>
+
+        <h3>3. Escalas visuales de frecuencia</h3>
+        <h4>Mel</h4>
+        <p>$$m(f)=2595\log_{10}\left(1+\frac{f}{700}\right)$$</p>
+        <p>La aplicación usa la inversa correspondiente para mapear píxeles de vuelta a Hz.</p>
+        <h4>Logarítmica</h4>
+        <p>La implementación visual usa un logaritmo suavizado:</p>
+        <p>$$\ell(f)=\log\left(1+\frac{f}{100}\right),\qquad f=100(e^{\ell}-1)$$</p>
+
+        <h3>4. Transformación visual de intensidad</h3>
+        <p>Si $z\in[0,1]$ es la intensidad normalizada, contraste $c$, brillo $b$ y gamma $\gamma$ se aplican aproximadamente como:</p>
+        <p>$$z_1=(z-0.5)c+0.5+b$$</p>
+        <p>$$z_2=\operatorname{clip}(z_1,0,1)^\gamma$$</p>
+        <p>Después se evalúa la paleta cromática. Esta transformación es exclusivamente visual.</p>
+
+        <h3>5. ROI y discretización</h3>
+        <p>La ROI continua:</p>
+        <p>$$R=[t_{\min},t_{\max}]\times[f_{\min},f_{\max}]$$</p>
+        <p>se convierte en índices temporales/frecuenciales usando el sample rate, hop y bins del espectrograma analítico.</p>
+
+        <h3>6. Embedding local del patch</h3>
+        <p>El patch se normaliza primero por rango:</p>
+        <p>$$P'_{ij}=\frac{P_{ij}-P_{\min}}{P_{\max}-P_{\min}+\varepsilon}$$</p>
+        <p>Luego se remuestrea mediante interpolación bilineal a una cuadrícula fija (actualmente 48×48), se centra y estandariza:</p>
+        <p>$$Q_{ij}=\frac{P'_{ij}-\mu}{\sigma}$$</p>
+        <p>y finalmente se normaliza en norma $L_2$:</p>
+        <p>$$u=\frac{\operatorname{vec}(Q)}{\|\operatorname{vec}(Q)\|_2}$$</p>
+        <p>Esto produce una representación de forma/intensidad relativa que permite comparar ROI de la misma geometría efectiva.</p>
+      </section>
+
+      <section id="metricas" data-search="coseno correlación euclidiana ncc cross correlation penalizacion score">
+        <h2>Métricas de similitud</h2>
+        <h3>Coseno</h3>
+        <p>$$s_{\cos}(u,v)=\frac{u^Tv}{\|u\|_2\|v\|_2}$$</p>
+        <p>Como los embeddings ya están normalizados, la implementación se reduce al producto punto y se recorta a $[0,1]$.</p>
+
+        <h3>Correlación normalizada</h3>
+        <p>En la implementación actual utiliza la misma representación centrada y normalizada que el coseno, por lo que ambas rutas comparten el producto punto sobre los embeddings normalizados.</p>
+
+        <h3>Euclidiana normalizada</h3>
+        <p>Para vectores normalizados:</p>
+        <p>$$s_E(u,v)=\operatorname{clip}\left(1-\frac{\|u-v\|_2}{2},0,1\right)$$</p>
+
+        <h3>Correlación cruzada temporal</h3>
+        <p>La plantilla y el candidato se remuestrean a una matriz reducida normalizada. Se prueban pequeños desplazamientos temporales $\Delta t$:</p>
+        <p>$$s=\max_{\Delta t}\operatorname{NCC}_w(P,Q_{\Delta t})e^{-\lambda_t|\Delta t|}$$</p>
+
+        <h3>Correlación cruzada 2D</h3>
+        <p>Extiende la búsqueda a pequeños desplazamientos temporales y frecuenciales:</p>
+        <p>$$s=\max_{\Delta t,\Delta f}\operatorname{NCC}_w(P,Q_{\Delta t,\Delta f})e^{-\lambda_t|\Delta t|-\lambda_f|\Delta f|}$$</p>
+        <p>La correlación ponderada da mayor importancia a regiones salientes del patch y mantiene un peso mínimo para el fondo.</p>
+
+        <h3>Correlación 2D multi-escala</h3>
+        <p>Además de desplazamientos, prueba pequeñas deformaciones globales controladas de tiempo y frecuencia. La implementación actual evalúa escalas temporales aproximadas $\{0.88,1,1.12\}$ y frecuenciales $\{0.92,1,1.08\}$:</p>
+        <p>$$s=\max_{a_t,a_f,\Delta t,\Delta f}\operatorname{NCC}_w(P,T(Q;a_t,a_f,\Delta t,\Delta f))\,\Pi(a_t,a_f,\Delta t,\Delta f)$$</p>
+        <p>donde $\Pi$ penaliza desplazamientos y deformaciones. No es warping libre.</p>
+      </section>
+
+      <section id="composicion" data-search="consenso weighted ncc medoid median mean centroid alignment quantile weights">
+        <h2>Matemática de la composición multimuestra</h2>
+        <h3>Soporte común</h3>
+        <p>Para un conjunto de muestras válidas, el soporte frecuencial se estima robustamente mediante percentiles y la duración de la plantilla compuesta usa la mayor duración de muestra. Esto reduce la influencia de extremos aislados.</p>
+
+        <h3>Alineación</h3>
+        <p>Cada muestra se centra inicialmente usando un centroide de energía. Luego se elige una muestra representativa (medoide) como referencia y se busca un desplazamiento local que maximice una similitud ponderada.</p>
+        <p>Conceptualmente, para muestra $P_i$ y referencia $R$:</p>
+        <p>$$\hat\delta_i=\arg\max_{\delta_t,\delta_f}\;\rho_w(R,P_i(\delta_t,\delta_f))$$</p>
+
+        <h3>Promedio alineado</h3>
+        <p>$$C_{ij}=\frac{1}{M}\sum_{m=1}^{M}P^{(m)}_{ij}$$</p>
+
+        <h3>Mediana alineada</h3>
+        <p>$$C_{ij}=\operatorname{median}\left(P^{(1)}_{ij},\ldots,P^{(M)}_{ij}\right)$$</p>
+
+        <h3>Consenso NCC</h3>
+        <p>La implementación actual usa un consenso robusto por píxel equivalente al cuantil 0.70 de las muestras alineadas:</p>
+        <p>$$C_{ij}=Q_{0.70}\left(P^{(1)}_{ij},\ldots,P^{(M)}_{ij}\right)$$</p>
+
+        <h3>Consenso ponderado</h3>
+        <p>Si $w_m$ representa la coherencia de la muestra alineada con la referencia:</p>
+        <p>$$C_{ij}=\frac{\sum_m w_mP^{(m)}_{ij}}{\sum_m w_m}$$</p>
+
+        <h3>Medoide</h3>
+        <p>Selecciona una muestra real representativa en lugar de sintetizar una nueva imagen:</p>
+        <p>$$m^*=\arg\min_m\sum_j d(E_m,E_j)$$</p>
+        <p>donde $E_m$ es la representación reducida de la muestra.</p>
+      </section>
+
+      <section id="arquitectura" data-search="timeline virtual overview tile tesela fallback worker stft multiresolution prefetch queue playback canvas viewport">
+        <h2>Arquitectura del visor multirresolución</h2>
+        <div class="flow">audio
+ ├── audio-worker.js
+ │     └── representación analítica + plantillas + búsqueda
+ │
+ └── visual-worker.js
+       └── STFT visual
+             ├── overview
+             ├── teselas de detalle
+             ├── caché
+             └── cálculo adaptativo
+
+app.js
+ ├── timeline virtual
+ ├── canvas fijo del viewport
+ ├── cola priorizada
+ ├── fallback continuo
+ └── prefetch durante reproducción</div>
+
+        <h3>Timeline virtual</h3>
+        <p>Si $T$ es la duración del audio y $P$ el zoom expresado en px/s, el ancho conceptual sería:</p>
+        <p>$$W_{virtual}=T\,P$$</p>
+        <p>Pero el canvas real se mantiene aproximadamente:</p>
+        <p>$$W_{canvas}\approx W_{viewport}$$</p>
+        <p>El scrollbar representa una línea temporal virtual acotada; el canvas se repinta con el intervalo temporal correspondiente.</p>
+
+        <h3>Fallback continuo</h3>
+        <p>El visor elige la mejor fuente ya disponible para cada instante:</p>
+        <div class="flow">tesela exacta solicitada
+   ↓ si no existe
+mejor tesela compatible disponible
+   ↓ si no existe
+overview completo</div>
+        <p>Cuando llega la tesela fina, sustituye inmediatamente al fallback. Así el audio no queda reproduciéndose sobre una pantalla blanca.</p>
+
+        <h3>Cola priorizada y prefetch</h3>
+        <p>Las solicitudes visuales se ordenan por prioridad. La política general es:</p>
+        <ol>
+          <li>viewport visible;</li>
+          <li>teselas inmediatamente por delante durante playback;</li>
+          <li>contexto cercano;</li>
+          <li>precarga de background.</li>
+        </ol>
+
+        <h3>STFT adaptativa</h3>
+        <p>En modo Auto, el tamaño visual de FFT cambia con el zoom. En audio de alta tasa de muestreo, el visor puede bajar progresivamente hacia FFT 256 en zoom temporal extremo y subir hasta 8192/16384 cuando domina el zoom frecuencial.</p>
+        <p>El detalle temporal útil se limita mediante un hop mínimo aproximado $H_{min}=N_{FFT}/16$; por encima de esa resolución el zoom geométrico puede continuar, pero no se inventan nuevas ventanas espectrales entre posiciones físicamente distintas.</p>
+      </section>
+
+      <section id="rendimiento" data-search="cache memoria 160 MB tiles worker performance audio largo zoom extremo">
+        <h2>Rendimiento y caché</h2>
+        <ul>
+          <li>Overview: se calcula primero para mostrar todo el audio rápidamente.</li>
+          <li>Teselas: se calculan bajo demanda según zoom y posición.</li>
+          <li>Background warm-up: prepara una resolución intermedia después de tener el overview.</li>
+          <li>Caché visual: presupuesto aproximado de <strong>160 MB</strong> y límite adicional por cantidad de teselas.</li>
+          <li>Plantillas compuestas: caché independiente por plantilla y método.</li>
+        </ul>
+        <div class="warn">Zoom extremadamente profundo no significa resolución física infinita. La resolución real está limitada por sample rate, ventana FFT y hop. El visor distingue entre zoom geométrico y nuevas columnas espectrales calculables.</div>
+      </section>
+
+      <section id="atajos" data-search="keyboard teclado shortcuts espacio flechas zoom">
+        <h2>Atajos</h2>
+        <table>
+          <tbody>
+            <tr><td><span class="kbd">0</span></td><td>Ver todo.</td></tr>
+            <tr><td><span class="kbd">+</span> / <span class="kbd">−</span></td><td>Zoom temporal.</td></tr>
+            <tr><td><span class="kbd">Z</span></td><td>Activar/desactivar Zoom selección.</td></tr>
+            <tr><td><span class="kbd">Esc</span></td><td>Salir de Zoom selección.</td></tr>
+            <tr><td><span class="kbd">Espacio</span></td><td>Play/pausa.</td></tr>
+            <tr><td><span class="kbd">←</span> / <span class="kbd">→</span></td><td>Retroceder/avanzar 1 s.</td></tr>
+          </tbody>
+        </table>
+      </section>
+
+      <section id="privacidad" data-search="privacy local browser backend github pages internet audio">
+        <h2>Privacidad y despliegue</h2>
+        <p>La decodificación, análisis, plantillas y búsqueda se ejecutan en el navegador. No existe un backend requerido por la aplicación.</p>
+        <p>La herramienta puede servirse localmente o publicarse como sitio estático. Recursos visuales externos, como el logo o MathJax de esta documentación, no forman parte del procesamiento del audio.</p>
+      </section>
+
+      <section id="problemas" data-search="troubleshooting worker cache blank white spectrogram performance audio no funciona localhost">
         <h2>Problemas frecuentes</h2>
-        <h3>El HTML abre, pero no funciona el audio o el worker</h3>
-        <p>Abre el proyecto desde <code>http://localhost:8000</code>, no con doble clic.</p>
+        <h3>La interfaz abre pero no funcionan botones/audio</h3>
+        <p>Comprueba la consola del navegador. Usa HTTP local, no <code>file:///</code>. Si vienes de otra versión, usa otro puerto o un servidor sin caché.</p>
+        <h3>Veo una versión anterior</h3>
+        <p>Limpia datos del sitio o usa <code>npx --yes http-server . -p 8000 -c-1</code>. La versión visible, el ZIP y los query strings de CSS/JS deben coincidir.</p>
         <h3>El espectrograma tarda</h3>
-        <p>Audios largos pueden tardar porque el cálculo se hace localmente en el navegador. Espera a que termine el indicador de procesamiento.</p>
-        <h3>Demasiadas cajas azules</h3>
-        <p>Sube el score mínimo o marca una ROI más específica.</p>
-        <h3>Muy pocas cajas</h3>
-        <p>Baja el score mínimo, aumenta la banda o prueba una ROI más representativa.</p>
+        <p>Audios largos, sample rates altos y zoom frecuencial profundo requieren más cálculo. El overview debe aparecer primero; las teselas de detalle llegan bajo demanda.</p>
+        <h3>El visor queda momentáneamente con menor detalle</h3>
+        <p>Es esperado mientras llega una tesela fina: la arquitectura prioriza no quedar en blanco y utiliza el mejor fallback disponible.</p>
+        <h3>Demasiadas coincidencias</h3>
+        <p>Sube el score mínimo, aumenta separación o usa perfil Conservador.</p>
+        <h3>Muy pocas coincidencias</h3>
+        <p>Baja score, reduce separación, usa Balanceado/Sensible o prueba una métrica tolerante a pequeños desplazamientos.</p>
       </section>
 
-      
-<section id="visor-v45" data-search="visor multirresolución zoom paletas gamma brillo contraste fft overview mel visual arquitectura v45">
-  <h2>Visor multirresolución v45.8</h2>
-<div class="callout"><strong>UX v45.6:</strong> la interfaz lateral se reorganiza con una guía visual, configuración agrupada con iconografía coherente, swatches de paleta, vista previa de plantilla sincronizada con la visualización principal, separación clara entre acciones de muestras y acciones de plantillas, autoajuste segmentado y resultados compactos. El panel Plantilla responde al ancho disponible: en escritorio usa dos columnas cuando caben y en móvil apila campos, preview y controles. El marcado táctil de ROI permanece disponible directamente sobre el espectrograma.</div>
-  <p>La v45.6 conserva el motor analítico de v43 y refina la capa visual construida en v45. El flujo de plantillas, varias muestras, métodos de comparación, autoajuste, tabla y exportaciones se conserva. La novedad es una capa de visualización multirresolución completamente separada del motor analítico y una reconstrucción UX orientada a lectura científica.</p><div class="callout"><strong>Corrección UX v45:</strong> la barra de vista previa inferior fue retirada. Consumía altura útil y podía hacer que el espectrograma pareciera recortado. La vista inicial ahora muestra toda la duración del audio y la navegación avanzada se mantiene mediante Ver todo, +/−, Zoom selección y las reglas.</div>
-<div class="callout"><strong>Refinamiento v45.1:</strong> el alto del espectrograma se adapta automáticamente al espacio disponible para mostrar el rango completo desde 0 Hz hasta Nyquist; el eje de frecuencia se estrecha; Tiempo (s) ocupa la franja superior; Ver todo incorpora icono; el playhead usa centro rojo con halo blanco; y la reproducción evita recalcular teselas cuando la vista está completamente encajada. El panel Plantilla adopta una composición más compacta con chips superiores, campos en dos columnas y vista previa compuesta con metadatos.</div>
-
-<div class="callout"><strong>Reproducción y zoom v45.8:</strong> con <em>Seguir reproducción</em> activo, el playhead conserva la cinemática de v43 y el visor usa una línea de tiempo virtual. Los canvases permanecen del tamaño del viewport incluso con zoom extremo. La imagen visible se repinta con la mejor resolución ya disponible; mientras llega una tesela fina se usa inmediatamente una resolución inferior, evitando zonas blancas. Las teselas del viewport y las siguientes en la dirección de reproducción tienen prioridad sobre la precarga de fondo.</div>
-<div class="callout"><strong>Sobre Mel:</strong> la opción <em>Mel</em> de v45.6 es una escala de visualización. Remapea verticalmente las frecuencias con la relación mel, pero la representación analítica de v43 permanece lineal. La opción <em>Logarítmica</em> también es visual y utiliza un mapeo logarítmico invertible que admite 0 Hz mediante un desplazamiento suave.</div>
-  <h3>Arquitectura: representación analítica y visualización</h3>
-  <pre><code>Audio PCM
-   ├── audio-worker.js  → representación analítica canónica → ROI → plantillas → similitud → autoajuste → resultados
-   └── visual-worker.js → FFT visual → caché base + teselas → zoom → paleta / brillo / contraste / gamma</code></pre>
-  <p><strong>Principio de v45:</strong> cambiar una opción puramente visual no invalida las plantillas ni las coincidencias. La representación analítica permanece estable mientras el usuario cambia zoom, escala, paleta o detalle visual.</p>
-  <h3>Ejes, navegación y geometría del viewport</h3>
-  <p>El eje temporal se dibuja en una banda propia <strong>arriba</strong> del espectrograma. Usa marcas mayores y menores, cambia automáticamente de segundos a formato minuto:segundo y muestra una cápsula roja con la posición exacta del playhead. El eje de frecuencia usa el encabezado horizontal <strong>Frecuencia (kHz)</strong> y valores numéricos adaptados al rango visible.</p>
-  <p>Los pasos de ambos ejes se calculan con una familia de valores “bonitos” (1, 2, 2.5 y 5 por potencias de diez), evitando divisiones arbitrarias como 16.7, 16.2, 15.7 kHz cuando existe una graduación más natural.</p>
-  <p>Al arrastrar cualquiera de las reglas, la selección se representa sobre la propia regla mediante una banda lineal azul con extremos marcados y el intervalo numérico activo. Al soltar, se aplica el zoom correspondiente sin eliminar el zoom rectangular directo sobre el espectrograma.</p>
-  <div class="callout"><strong>Zoom sin zonas negras:</strong> la ventana visible se limita siempre al intervalo real del audio. Si un zoom intentaría sobrepasar 0 s o el final, se desplaza la ventana completa conservando su ancho. Mientras una tesela de alta resolución se calcula, la vista general disponible permanece visible como fallback.</div>
-  <h3>Lenguaje visual y anotaciones</h3>
-  <p>La interfaz usa una composición de escritorio cercana a dos tercios para el visor y un tercio para los acordeones. Los títulos de Guía, Configuración, Plantilla, Búsqueda y Resultados usan iconografía SVG consistente; las tarjetas tienen bordes suaves y sombras discretas. Las cajas de fonotipos utilizan una paleta independiente del espectrograma y sus etiquetas se presentan en cápsulas claras con el nombre y, para coincidencias, el score.</p>
-
-  <h3>Vista general y teselas de detalle</h3>
-  <p>Al cargar el audio se calcula una vista general del espectrograma. Cuando el usuario se acerca o se desplaza, el visor solicita teselas de mayor detalle para la región visible y precarga teselas vecinas. Las teselas recientes se mantienen en una caché LRU. Mientras una tesela fina se calcula, la vista general sirve como respaldo inmediato.</p>
-  <h3>Zoom y navegación</h3>
-  <table><tbody>
-    <tr><th>Control</th><th>Comportamiento</th></tr>
-    <tr><td><strong>Ver todo</strong> / tecla <code>0</code></td><td>Ajusta todo el audio al visor y restaura el rango completo de frecuencia.</td></tr>
-    <tr><td><code>+</code> / <code>−</code></td><td>Acerca o aleja temporalmente alrededor de la posición de reproducción.</td></tr>
-    <tr><td><strong>Zoom selección</strong> / tecla <code>z</code></td><td>El arrastre sobre el espectrograma hace zoom en tiempo y frecuencia. Con el modo apagado, el mismo gesto continúa creando una plantilla como en v43.</td></tr>
-    <tr><td>Arrastrar la regla temporal</td><td>Zoom solo temporal.</td></tr>
-    <tr><td>Arrastrar el eje de frecuencia</td><td>Zoom solo frecuencial.</td></tr>
-    <tr><td>Vista completa inicial</td><td>El audio se encaja automáticamente en el ancho disponible. El zoom se controla con +/−, selección rectangular o las reglas temporal y frecuencial.</td></tr>
-    <tr><td><code>Espacio</code>, <code>←</code>, <code>→</code></td><td>Play/pausa y saltos de un segundo.</td></tr>
-  </tbody></table>
-  <h3>Configuración del espectrograma</h3>
-  <p>La configuración visual incluye <strong>Lineal</strong>, <strong>Mel</strong> y <strong>Logarítmica</strong>; paletas Magma clara, Magma invertida, Magma, Inferno invertida, Inferno, Plasma invertida, Plasma, Viridis invertida, Viridis, Cividis, Turbo, Hot, Grises y Grises invertidos; controles de contraste, brillo y gamma; FFT visual en Auto, 1024, 2048, 4096 u 8192; detalle temporal Rápido, Medio, Alto o Ultra; altura del espectrograma y zoom temporal. <strong>Magma clara</strong> es el valor visual inicial: fondo marfil, energía débil melocotón, energía media coral, energía alta magenta y máximos púrpura oscuro.</p>
-  <p>Mel es solamente visual. Usa la transformación <code>m = 2595 log10(1 + f/700)</code> para remapear la coordenada vertical. No aplica un banco de filtros Mel y no cambia la matriz usada por las búsquedas.</p>
-  <h3>FFT visual y detalle temporal</h3>
-  <p>Para una FFT de tamaño <code>N</code> y sample rate <code>f_s</code>, la duración aproximada de la ventana es <code>T = N/f_s</code> y la separación entre bins es <code>Δf = f_s/N</code>. El modo Auto selecciona un tamaño según el sample rate y el nivel de zoom. El control de detalle temporal decide cuántas ventanas se agregan por columna para reducir la pérdida de eventos breves al ver intervalos largos.</p>
-  <h3>Qué permanece intacto desde v43</h3>
-  <p>Se mantienen: carga local de audio; frecuencia hasta Nyquist; ROI tiempo–frecuencia; múltiples fonotipos con chips, colores y carruseles; agregar y quitar plantillas; creación de una nueva plantilla al dibujar después de haber buscado; búsqueda incremental; parámetros y resultados independientes por plantilla; edición bidireccional de etiquetas; <strong>Usar varias muestras</strong>; consenso NCC, consenso ponderado, medoide, mediana alineada y promedio alineado; caché por método; coseno, correlación normalizada, euclidiana normalizada, correlación cruzada, correlación cruzada 2D y correlación 2D multi-escala; scores 0–1; autoajuste Ninguno, Conservador, Balanceado y Sensible; primera corrida Balanceado y posterior paso automático a Ninguno; Modo experto; Ver cajas; tabla ordenable y exportaciones CSV, XLSX y TXT Audacity.</p>
-</section>
-<section id="actualizaciones">
-        <h2>Actualizaciones técnicas y notas de versión</h2>
-        <p>Esta sección reúne las mejoras agregadas durante las iteraciones recientes. Se conserva como registro técnico para entender la evolución del flujo multi-plantilla, la caché, los métodos de comparación y los cambios de exportación.</p>
+      <section id="mantenimiento" data-search="agents md changelog readme versioning regression definition done mantenimiento ia llm">
+        <h2>Mantenimiento del proyecto</h2>
+        <p>El repositorio incorpora cuatro documentos con responsabilidades separadas:</p>
+        <table>
+          <thead><tr><th>Archivo</th><th>Responsabilidad</th></tr></thead>
+          <tbody>
+            <tr><td><code>README.md</code></td><td>Entrada rápida y estado público del producto.</td></tr>
+            <tr><td><code>documentacion.html</code></td><td>Manual completo, matemática y arquitectura.</td></tr>
+            <tr><td><code>AGENTS.md</code></td><td>Contrato obligatorio para agentes/LLM/desarrolladores: invariantes, versionado, documentación y pruebas.</td></tr>
+            <tr><td><code>CHANGELOG.md</code></td><td>Historial canónico de versiones.</td></tr>
+          </tbody>
+        </table>
+        <div class="note">Para desarrollo asistido por IA, <strong>leer primero <code>AGENTS.md</code></strong>. Una entrega no está completa si no cumple su Definition of Done.</div>
       </section>
 
-<section id="exportacion-audacity">
-  <h2>Exportación TXT Audacity</h2>
-  <p>La versión v9 permite escribir una <strong>Etiqueta (opcional)</strong> al guardar la ROI. Esa etiqueta se propaga a los resultados y se exporta en CSV, XLSX y TXT.</p>
-  <p>El archivo TXT usa el formato de etiquetas de Audacity con dos líneas por evento:</p>
-  <pre><code>tmin	tmax	etiqueta
-\	fmin	fmax</code></pre>
-</section>
-
-
-<section id="multiplantilla"><h2>Modo multi-plantilla</h2><p>Desde la versión v16, la aplicación permite trabajar con varias plantillas acústicas en el mismo audio. Cada plantilla tiene su propia etiqueta, color, coordenadas, parámetros de búsqueda y resultados asociados.</p><p>Si no se escribe una etiqueta, la aplicación asigna nombres automáticos como <code>fonotipo1</code>, <code>fonotipo2</code> y así sucesivamente. Los chips horizontales permiten saltar entre plantillas, mientras que el carrusel permite avanzar o retroceder una plantilla a la vez.</p><p>La primera vez que se pulsa <strong>Buscar similares</strong>, se procesan todas las plantillas guardadas. Después de esa primera corrida, las búsquedas siguientes se aplican solo a la plantilla activa, para permitir ajustes finos. El botón <strong>Limpiar</strong> también actúa localmente sobre la plantilla activa.</p><p>El casillero <strong>Ver cajas</strong> permite mostrar u ocultar las cajas inferidas de la plantilla activa sin borrar los resultados ni afectar las exportaciones.</p><p>En la tabla de resultados, la columna de etiqueta es editable. Si se cambia la etiqueta de una coincidencia, el cambio se propaga a todas las coincidencias de la misma plantilla y al chip correspondiente.</p></section>
-
-<section id="v17-multiplantilla-simplificado">
-  <h2>Flujo multi-plantilla simplificado</h2>
-  <p>Desde la versión v17, el etiquetador trabaja como un gestor de plantillas acústicas. Cada plantilla conserva su etiqueta, color, coordenadas, parámetros de búsqueda y coincidencias.</p>
-  <p>El panel <strong>Plantilla</strong> permite navegar con chips superiores y flechas laterales. En v45.1 los campos temporales y frecuenciales se compactan en dos columnas; las frecuencias se muestran en kHz, mientras internamente siguen almacenándose en Hz. El botón <strong>Agregar plantilla +</strong> guarda o actualiza la plantilla actual y abre una nueva plantilla para seguir marcando. El botón <strong>Quitar plantilla −</strong> elimina la plantilla activa.</p>
-  <p>El botón <strong>Buscar coincidencias</strong> guarda automáticamente la plantilla marcada si la caja es válida y busca todas las plantillas válidas, aplicando el autoajuste por plantilla. Luego el panel <strong>Búsqueda</strong> permite revisar y ajustar cada plantilla con la misma navegación por chips y carrusel.</p>
-  <p>La tabla de resultados muestra primero el número de fila (#) y luego la etiqueta en una cápsula coloreada editable. Al editar esa etiqueta, se actualiza la plantilla completa, sus coincidencias y las exportaciones CSV, XLSX y TXT Audacity.</p>
-</section>
-
-<section id="v18"><h2>Actualización v18</h2><p>La tabla de resultados se ordena como <code>#</code>, <code>etiqueta</code>, <code>score</code>, <code>tmin</code>, <code>tmax</code>, <code>fmin</code>, <code>fmax</code>. Además, si se marca una plantilla válida, el botón <strong>Buscar coincidencias</strong> queda disponible y guarda automáticamente esa plantilla antes de buscar, sin exigir pulsar <strong>Agregar plantilla +</strong>. Los botones de gestión de plantilla usan colores diferenciados: rojo suave para quitar y azul para agregar.</p></section>
-<section id="v19"><h2>Actualización v19: búsqueda incremental</h2><p>Desde el panel <strong>Plantilla</strong>, el botón <strong>Buscar coincidencias</strong> procesa solo plantillas nuevas o pendientes. Las coincidencias y parámetros ya ajustados de plantillas previas se conservan. Para recalcular una plantilla existente, se selecciona en <strong>Búsqueda</strong> y se pulsa <strong>Buscar similares</strong>.</p></section>
-<section id="v29"><h2>Actualización v29: plantillas con varias muestras</h2><p>El panel <strong>Plantilla</strong> incluye el modo <strong>Usar varias muestras</strong>. Al activarlo, se habilita un subpanel para agregar o quitar muestras dentro del mismo fonotipo. La búsqueda usa una plantilla compuesta calculada con alineación por centroide de energía y método de plantilla compuesto. En versiones recientes se usan consenso NCC, consenso ponderado, medoide, mediana alineada o promedio alineado. El resto del flujo multi-plantilla se mantiene igual: cada fonotipo conserva sus parámetros, resultados, color y exportaciones.</p></section>
-
-<section id="v30"><h2>Actualización v30: UX de varias muestras y ajuste manual</h2><p>El modo <strong>Usar varias muestras</strong> se simplifica: el panel de muestras permanece oculto hasta que se activa el casillero. Cuando está activo, muestra el selector de estimador, los botones para agregar o quitar muestras, un resumen y una vista previa del soporte compuesto usado por la plantilla. Además, se corrige el flujo de búsqueda manual para que ajustar <em>score</em> o separación entre ventanas y volver a buscar no cree plantillas nuevas accidentalmente.</p></section>
-
-<section id="v31"><h2>Actualización v31: vista previa de plantilla compuesta</h2><p>El control <strong>Usar varias muestras</strong> se presenta en una sola línea. Al activarlo, el subpanel muestra primero la vista previa de la plantilla compuesta que se está construyendo con las muestras agregadas. Esa imagen resume visualmente el resultado del estimador seleccionado, sea <strong>consenso NCC</strong>, <strong>consenso ponderado</strong>, <strong>medoide</strong>, <strong>mediana alineada</strong> o <strong>promedio alineado</strong>, y se actualiza al agregar o quitar muestras.</p></section>
-
-<section id="v34"><h2>Actualización v34: consenso NCC y consenso ponderado</h2><p>La fase 1 de mejora algorítmica reemplaza el método ambiguo de <strong>mejor coincidencia</strong> por métodos que producen una plantilla visual concreta. El selector <strong>Método de plantilla</strong> ofrece <strong>consenso NCC</strong>, <strong>consenso ponderado</strong>, <strong>medoide</strong>, <strong>mediana alineada</strong> y <strong>promedio alineado</strong>. Todas las muestras se alinean con centroide de energía y refinamiento por similitud ponderada en zonas salientes. El medoide muestra la muestra real elegida, mientras que los consensos construyen una plantilla efectiva para el embedding.</p></section>
-
-<section id="cache-v37">
-  <h2>Caché por método de plantilla</h2>
-  <p>Desde la v37, cuando se activa <strong>Usar varias muestras</strong>, la vista previa de cada método de plantilla se conserva por separado. Si las muestras no cambian, volver a un método ya calculado reutiliza la caché y no recalcula la plantilla compuesta.</p>
-  <p>La caché se invalida solamente cuando cambian las muestras, se carga otro audio o se reconstruye el espectrograma. Cambiar entre métodos de plantilla ya calculados debe ser inmediato.</p>
-</section>
-
-      <section id="v39-correlacion-cruzada">
-        <h2>Correlación cruzada local</h2>
-        <p>La versión v39 agrega un método de comparación llamado <strong>correlación cruzada</strong>. A diferencia de la correlación normalizada simple, que compara directamente la plantilla contra una ventana ya alineada, la correlación cruzada prueba pequeños desplazamientos internos en tiempo y frecuencia y conserva el mejor score.</p>
-        <p>Si $P$ es la plantilla y $Q$ una ventana candidata, la idea es:</p>
-        <p>$$s(P,Q)=\max_{\Delta t,\Delta f} \operatorname{NCC}(P, Q_{\Delta t,\Delta f}) \cdot \exp(-\lambda(|\Delta t|+|\Delta f|))$$</p>
-        <p>La función $\operatorname{NCC}$ es una correlación normalizada local. El factor exponencial penaliza desplazamientos grandes para evitar que el método se vuelva demasiado permisivo. El score final se mantiene entre 0 y 1 para conservar el mismo flujo de autoajuste.</p>
-        <p>Este método puede detectar coincidencias ligeramente desalineadas respecto a la plantilla, aunque normalmente tarda más que coseno, correlación normalizada o euclidiana.</p>
+      <section id="cambios" data-search="changelog control cambios 45.8.4 45.8.3 45.8.2 45.8.1 45.8">
+        <h2>Control de cambios</h2>
+        <h3>v45.8.4 — actual</h3>
+        <ul>
+          <li>Preview de plantilla oculto hasta que existe una selección válida.</li>
+          <li>README reescrito.</li>
+          <li>Documentación reorganizada y ampliada.</li>
+          <li>Buscador local en el sidebar de documentación.</li>
+          <li>Nuevos <code>AGENTS.md</code> y <code>CHANGELOG.md</code>.</li>
+        </ul>
+        <h3>v45.8.3</h3><p>Eliminación de títulos redundantes `[kHz]` y `[s]` dentro del preview.</p>
+        <h3>v45.8.2</h3><p>Unidades incorporadas en etiquetas finales y eliminación del choque de etiquetas en el origen.</p>
+        <h3>v45.8.1</h3><p>Preview proporcional, marcas internas más legibles y tiempo relativo de plantilla.</p>
+        <h3>v45.8</h3><p>Timeline virtual, zoom profundo, teselas priorizadas, fallback continuo, prefetch de playback y STFT visual adaptativa.</p>
+        <p>Para el registro canónico completo consulta <code>CHANGELOG.md</code>.</p>
       </section>
 
-    
-      <section id="v41-correlacion-cruzada-2d">
-        <h2>Actualización v41: correlación cruzada 2D</h2>
-        <p>La versión v41 retira <strong>coseno cruzado</strong> y agrega <strong>correlación cruzada 2D</strong>. La opción <strong>correlación cruzada</strong> conserva una tolerancia local temporal; la nueva opción <strong>correlación cruzada 2D</strong> permite tolerancias pequeñas tanto en tiempo como en frecuencia.</p>
-        <p>Para una plantilla reducida <code>P</code> y una ventana candidata reducida <code>Q</code>, se evalúan desplazamientos pequeños <code>Δt</code> y <code>Δf</code>:</p>
-        <pre><code>score = max NCC(P, shift(Q, Δt, Δf)) × penalización(Δt, Δf)</code></pre>
-        <p>La penalización evita que desplazamientos grandes produzcan coincidencias demasiado permisivas. El resultado final sigue en la escala 0–1, igual que los demás métodos de comparación, para mantener compatible el autoajuste.</p>
+      <section id="historial" data-search="old history v43 v42 v41 v39 v38 v37 v34 v31 v30 v29 v19 v18 v11 v9">
+        <h2>Historial anterior</h2>
+        <details><summary>v45.7.x — consolidación UX</summary><div><p>Reglas compactas, panel lateral redimensionable, geometría estable en zoom, reproductor más fino, preview proporcional, responsive y exportaciones compactas.</p></div></details>
+        <details><summary>v45.6 / v45.6.1 — rediseño y hotfix</summary><div><p>Rediseño visual de acordeones y selector de paletas. v45.6.1 corrigió el error de inicialización producido por usar <code>PALETTE_LABELS</code> antes de inicializarlo.</p></div></details>
+        <details><summary>v45.x — visor multirresolución</summary><div><p>Separación análisis/visualización, escalas visuales, paletas, navegación científica y teselas.</p></div></details>
+        <details><summary>v43 — base funcional</summary><div><p>Base funcional consolidada preservada durante la evolución v45: audio, ROI, plantillas, búsqueda, resultados, reproducción y exportaciones.</p></div></details>
+        <details><summary>v42 / v41 / v39 — correlaciones avanzadas</summary><div><p>v39 incorporó correlación cruzada local; v41 correlación 2D; v42 extensión 2D multi-escala.</p></div></details>
+        <details><summary>v38 / v37 — caché de plantillas compuestas</summary><div><p>Caché persistente por método y reutilización de previews/plantillas ya calculadas.</p></div></details>
+        <details><summary>v34 / v31 / v30 / v29 — multimuestra</summary><div><p>Introducción y consolidación de múltiples muestras, preview compuesto, alineación y métodos de consenso.</p></div></details>
+        <details><summary>v19 / v18 — flujo multi-plantilla</summary><div><p>Búsqueda incremental y simplificación de la transición entre plantilla y búsqueda.</p></div></details>
+        <details><summary>v11 / v9 — métricas y exportación</summary><div><p>Unificación de score 0–1, correlación normalizada, etiquetas opcionales y exportación TXT Audacity.</p></div></details>
       </section>
 
-    
-<section id="autoajuste-perfiles">
-  <h2>Autoajuste por perfil</h2>
-  <p>La búsqueda usa un selector de autoajuste con cuatro perfiles: <strong>Ninguno</strong>, <strong>Conservador</strong>, <strong>Balanceado</strong> y <strong>Sensible</strong>. Cada plantilla nueva inicia en Balanceado. Al terminar su primera búsqueda, el perfil pasa a Ninguno para permitir ajuste fino manual del score mínimo y de la separación entre ventanas.</p>
-  <p>Conservador mantiene umbrales más estrictos. Balanceado relaja el umbral usando prominencia local de picos e incrementa el máximo de candidatos según la duración del audio. Sensible baja más el piso de aceptación y permite más candidatos cuando los picos sobresalen del fondo local.</p>
-  <p>Para un pico con score $s_i$, se calcula una prominencia local $p_i = s_i - b_i$, donde $b_i$ es un fondo local estimado alrededor del pico. En perfiles Balanceado y Sensible, un candidato puede aceptarse si supera el umbral principal o si supera un umbral suave y tiene suficiente prominencia local. Esto aumenta sensibilidad sin volver directamente a ventanas crudas.</p>
-  <p>El modo experto permite controlar el mínimo objetivo de candidatos, el máximo automático, la prominencia mínima y el agrupamiento temporal. Estos controles solo se muestran cuando se activa <strong>Modo experto</strong>.</p>
-</section>
-
-
-
-  
-
-<section id="v42"><h2>Actualización v42: correlación 2D multi-escala</h2>
-  <p>La versión v42 agrega el método <strong>correlación 2D multi-escala</strong>. Este método extiende la correlación cruzada 2D: además de pequeños desplazamientos temporales y frecuenciales, prueba pequeñas variaciones globales de duración y escala frecuencial. No es un warping libre tiempo-frecuencia; es una aproximación controlada, con pocas escalas y penalización por deformación.</p>
-  <pre><code>score = max NCC(P, transform(Q, escala_t, escala_f, Δt, Δf)) × penalización</code></pre>
-</section>
-
-<section id="exportacion-resultados-nota"><h2>Exportación de resultados</h2><p>Los archivos CSV, XLSX y TXT Audacity se descargan usando el mismo nombre base del audio original, cambiando solo la extensión. Si el audio se llama <code>audio.mp3</code>, las exportaciones serán <code>audio.csv</code>, <code>audio.xlsx</code> y <code>audio.txt</code>.</p></section>
-
-<section id="cache-v38">
-  <h2>Actualización v38: caché persistente por método</h2>
-  <p>La caché de plantillas compuestas se guarda ahora dentro de cada plantilla y se organiza por método. Así, si ya se calculó <em>consenso NCC</em>, <em>consenso ponderado</em>, <em>medoide</em>, <em>mediana alineada</em> o <em>promedio alineado</em>, volver a ese método no recalcula la plantilla mientras las muestras no hayan cambiado.</p>
-  <p>También se evita que el soporte compuesto mostrado en los campos se agregue accidentalmente como una muestra nueva al ejecutar la búsqueda. Esto mantiene estable la firma de muestras y evita perder la caché. Además, la app precalienta la caché interna del worker de búsqueda cuando se construye una vista previa compuesta.</p>
-</section>
-
-
-
-
-
-<section id="optimizacion-cache">
-  <h2>Optimización y caché de plantillas compuestas</h2>
-  <p>Cuando se activa <strong>Usar varias muestras</strong>, la construcción de la plantilla compuesta puede requerir alinear varias muestras y calcular un consenso. Para evitar que la interfaz recalcule el mismo resultado una y otra vez, la app conserva en caché la plantilla compuesta asociada a la combinación de muestras, método de plantilla y configuración visual del espectrograma.</p>
-  <p>Si no cambian las muestras ni la configuración del espectrograma, cada método ya calculado permanece en caché. Cambiar de un método a otro no invalida la caché; al volver a un método previamente calculado, la vista previa debe mostrarse de inmediato. El caché solo se invalida al agregar/quitar muestras, cargar otro audio o reconstruir el espectrograma. El panel de muestras muestra una barra de progreso compacta durante la primera construcción de cada método.</p>
-</section>
-
-<h2 id="cache-plantillas-compuestas">Caché de plantillas compuestas</h2>
-<p>La aplicación conserva en memoria cada plantilla compuesta calculada para una combinación fija de muestras, método de plantilla y configuración visual. Si el usuario vuelve a un método ya calculado, la vista previa y la búsqueda reutilizan el resultado en caché. Esto evita reconstruir el consenso al cambiar entre métodos.</p>
-<p>El caché se invalida únicamente cuando cambian las muestras, el audio o la configuración del espectrograma. En particular, cambiar de <em>consenso NCC</em> a <em>medoide</em> y volver a <em>consenso NCC</em> no debería recalcular si las muestras no cambiaron.</p>
-<p>El medoide usa una ruta rápida basada en embeddings 48×48 para escoger una muestra real representativa. Los métodos de consenso siguen usando alineación, pero su resultado queda guardado.</p>
-
-      <p class="footer">Proyecto web estático. Puede publicarse en GitHub Pages. El audio se procesa localmente en el navegador del usuario.</p>
+      <div class="footer">Bioacoustic Template Labeler · documentación v45.8.4 · Proyecto web estático con procesamiento local en el navegador.</div>
     </main>
   </div>
+
+  <script>
+    (() => {
+      const input = document.getElementById('docSearch');
+      const results = document.getElementById('searchResults');
+      const sections = Array.from(document.querySelectorAll('main section[id]'));
+      const normalize = s => (s || '').toLocaleLowerCase('es').normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+      const items = sections.map(section => {
+        const heading = section.querySelector('h2,h3');
+        const title = heading ? heading.textContent.trim() : section.id;
+        const extra = section.dataset.search || '';
+        const text = section.textContent.replace(/\s+/g, ' ').trim();
+        return { section, title, haystack: normalize(`${title} ${extra} ${text}`), text };
+      });
+
+      const snippetFor = (item, raw) => {
+        const q = normalize(raw);
+        const normalizedText = normalize(item.text);
+        const idx = normalizedText.indexOf(q);
+        if (idx < 0) return item.text.slice(0, 105) + (item.text.length > 105 ? '…' : '');
+        const start = Math.max(0, idx - 40);
+        const end = Math.min(item.text.length, idx + raw.length + 70);
+        return `${start ? '…' : ''}${item.text.slice(start, end)}${end < item.text.length ? '…' : ''}`;
+      };
+
+      const render = () => {
+        const raw = input.value.trim();
+        const q = normalize(raw);
+        if (!q) { results.classList.remove('active'); results.innerHTML = ''; return; }
+        const tokens = q.split(/\s+/).filter(Boolean);
+        const matched = items.filter(item => tokens.every(token => item.haystack.includes(token))).slice(0, 12);
+        results.classList.add('active');
+        if (!matched.length) { results.innerHTML = '<div class="search-empty">Sin coincidencias.</div>'; return; }
+        results.innerHTML = matched.map(item => `<a class="search-result" href="#${item.section.id}"><strong>${item.title}</strong><small>${snippetFor(item, raw)}</small></a>`).join('');
+        results.querySelectorAll('a').forEach(a => a.addEventListener('click', () => {
+          results.classList.remove('active');
+          const target = document.querySelector(a.getAttribute('href'));
+          if (target) {
+            target.animate([{backgroundColor:'#fff7b2'},{backgroundColor:'transparent'}],{duration:1100,easing:'ease-out'});
+          }
+        }));
+      };
+      input.addEventListener('input', render);
+      input.addEventListener('keydown', ev => {
+        if (ev.key === 'Escape') { input.value = ''; render(); input.blur(); }
+        if (ev.key === 'Enter') {
+          const first = results.querySelector('a');
+          if (first) first.click();
+        }
+      });
+    })();
+  </script>
 </body>
 </html>

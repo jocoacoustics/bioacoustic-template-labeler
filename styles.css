@@ -1698,3 +1698,9 @@ body.is-resizing-sidepanel .side-panel-resizer::after{
   width:100%;
   text-align:center;
 }
+
+
+/* v45.8.4 · preview de plantilla solo cuando existe una selección válida */
+.template-preview-card-main.is-hidden{display:none!important}
+.template-editor-grid.preview-hidden{grid-template-columns:minmax(0,1fr)!important}
+.template-editor-grid.preview-hidden .template-fields-card{width:100%;max-width:none}
