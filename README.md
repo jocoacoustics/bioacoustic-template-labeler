@@ -78,7 +78,7 @@ bioacoustic-template-labeler-wizard-v45.8.4/
 
 ## Documentación
 
-Abre [`documentacion.html`](documentacion.html) para el manual completo. Incluye:
+Abre [`documentacion.html`](https://jocoacoustics.github.io/bioacoustic-template-labeler/documentacion.html) para el manual completo. Incluye:
 
 * uso de la interfaz;
 * parámetros;
