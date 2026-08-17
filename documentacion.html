@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Documentación v48.2 · Bioacoustic Template Labeler</title>
+  <title>Documentación v48.3 · Bioacoustic Template Labeler</title>
   <style>
     :root {
       --bg: #ffffff;
@@ -126,7 +126,7 @@
     <aside>
       <div class="logo">
         <img src="https://jocotoco.org.ec/dct/tmp_adjuntos/noEn/000/073/MatrizDatos_1757014841Logo-jocotoco2025.svg" alt="Logo Jocotoco">
-        <div><strong>Documentación</strong><span>Bioacoustic Template Labeler · v48.2</span></div>
+        <div><strong>Documentación</strong><span>Bioacoustic Template Labeler · v48.3</span></div>
       </div>
 
       <div class="doc-search">
@@ -196,7 +196,7 @@
         <h2>Ejecutar localmente</h2>
         <p>No abras el proyecto como <code>file:///...</code>. Los Web Workers y ciertos recursos pueden quedar restringidos. Usa un servidor HTTP local.</p>
         <h3>Python / Conda</h3>
-        <pre><code>cd bioacoustic-template-labeler-wizard-v48.2
+        <pre><code>cd bioacoustic-template-labeler-wizard-v48.3
 python -m http.server 8000</code></pre>
         <p>Abre:</p>
         <pre><code>http://localhost:8000</code></pre>
@@ -454,7 +454,7 @@ ambos motores → Resultados</div>
 
       <section id="resultados" data-search="tabla metodo perch2 clasica score csv xlsx txt audacity exportacion cajas">
         <h2>Resultados y exportación</h2>
-        <p>Las coincidencias aceptadas de ambos motores se dibujan sobre el espectrograma y se listan en una sola tabla. La columna <strong>método</strong> distingue <em>Búsqueda clásica</em>, <em>Perch2 · automático</em>, <em>Perch2 · audio</em> y <em>Perch2 · banda</em>. La tabla conserva etiqueta, score y límites temporales/frecuenciales.</p>
+        <p>Las coincidencias aceptadas de ambos motores se dibujan sobre el espectrograma y se listan en una sola tabla. Para mantener limpio el visor, cada caja muestra únicamente <strong>etiqueta + score</strong> en una sola línea, por ejemplo <code>fonotipo1 0.87</code>. La columna <strong>método</strong> de Resultados distingue <em>Búsqueda clásica</em>, <em>Perch2 · automático</em>, <em>Perch2 · audio</em> y <em>Perch2 · banda</em>; la tabla conserva además etiqueta, score y límites temporales/frecuenciales.</p>
         <h3>CSV</h3><p>Formato tabular abierto para análisis posterior; incluye la columna <code>metodo</code>.</p>
         <h3>XLSX</h3><p>Versión de hoja de cálculo para revisión y distribución; incluye la columna <code>metodo</code>.</p>
         <h3>TXT Audacity</h3><p>Exporta etiquetas temporales y frecuencia para importación en pistas de etiquetas de Audacity.</p>
@@ -692,7 +692,12 @@ overview completo</div>
 
       <section id="cambios" data-search="changelog control cambios 46 perch2 45.8.4 45.8.3 45.8.2 45.8.1 45.8">
         <h2>Control de cambios</h2>
-        <h3>v48.2 — actual</h3>
+        <h3>v48.3 — actual</h3>
+        <ul>
+          <li>Las cajas de coincidencias muestran únicamente <strong>etiqueta + score</strong> en una sola línea para reducir saturación visual.</li>
+          <li>El método y el resto de metadatos permanecen en Resultados; no cambia ninguna lógica analítica.</li>
+        </ul>
+        <h3>v48.2</h3>
         <p><strong>Ancho mínimo = plantilla:</strong> el perfil temporal define el centro y una duración propuesta, pero la caja final no puede ser más corta que la referencia usada por Perch2. El paso temporal queda como resolución del perfil.</p>
         <ul>
           <li>Automático pasa a ser el modo Perch2 predeterminado y usa la banda de la referencia.</li>
@@ -727,7 +732,7 @@ overview completo</div>
         <details><summary>v11 / v9 — métricas y exportación</summary><div><p>Unificación de score 0–1, correlación normalizada, etiquetas opcionales y exportación TXT Audacity.</p></div></details>
       </section>
 
-      <div class="footer">Bioacoustic Template Labeler · documentación v48.2 · Proyecto web estático con procesamiento local en el navegador.</div>
+      <div class="footer">Bioacoustic Template Labeler · documentación v48.3 · Proyecto web estático con procesamiento local en el navegador.</div>
     </main>
   </div>
 

@@ -1,15 +1,15 @@
-# Bioacoustic Template Labeler · v48.2
+# Bioacoustic Template Labeler · v48.3
 
 https://jocoacoustics.github.io/bioacoustic-template-labeler/
 
-Herramienta web estática/local para **marcar plantillas acústicas sobre espectrogramas, buscar patrones similares y revisar/exportar coincidencias**. v48.2 consolida **Perch2 ONNX en el navegador** como segundo motor de búsqueda, sin backend de inferencia y sin subir el audio del usuario.
+Herramienta web estática/local para **marcar plantillas acústicas sobre espectrogramas, buscar patrones similares y revisar/exportar coincidencias**. v48.3 conserva **Perch2 ONNX en el navegador** como segundo motor de búsqueda, sin backend de inferencia y sin subir el audio del usuario.
 
 ## Inicio rápido
 
 Descomprime el proyecto y sirve la carpeta mediante HTTP:
 
 ```bash
-cd bioacoustic-template-labeler-wizard-v48.2
+cd bioacoustic-template-labeler-wizard-v48.3
 python -m http.server 8000
 ```
 
@@ -31,7 +31,7 @@ http://localhost:8000
    - **Búsqueda Perch2** mediante embeddings de 1536 dimensiones y coseno real.
 5. Revisa todos los candidatos en el mismo panel **Resultados** y exporta CSV, XLSX o TXT Audacity.
 
-## Perch2 en v48.2
+## Perch2 en v48.3
 
 - Se ejecuta localmente en `perch-worker.js` mediante ONNX Runtime Web.
 - Intenta **WebGPU** y utiliza **WASM** como fallback local.
@@ -63,7 +63,7 @@ La primera ejecución de Perch2 descarga ONNX Runtime Web y el modelo ONNX como 
 ## Estructura
 
 ```text
-bioacoustic-template-labeler-wizard-v48.2/
+bioacoustic-template-labeler-wizard-v48.3/
 ├── index.html
 ├── styles.css
 ├── README.md
@@ -90,7 +90,7 @@ bioacoustic-template-labeler-wizard-v48.2/
 
 ## Documentación y mantenimiento
 
-Abre `documentacion.html` para el manual completo, algoritmos y matemática.
+Abre [documentacion.html](https://jocoacoustics.github.io/bioacoustic-template-labeler/documentacion.html) para el manual completo, algoritmos y matemática.
 
 **Antes de modificar el proyecto, leer `AGENTS.md`.** El historial canónico se mantiene en `CHANGELOG.md`.
 

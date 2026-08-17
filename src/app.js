@@ -1139,7 +1139,7 @@ function updatePerchButtonsState() {
 function ensurePerchWorker() {
   if (state.perchWorker) return state.perchWorker;
   if (!state.samples?.length || !(state.sampleRate > 0)) return null;
-  const worker = new Worker('src/perch-worker.js?v=48.2');
+  const worker = new Worker('src/perch-worker.js?v=48.3');
   state.perchWorker = worker;
   state.perchAudioReady = false;
   worker.onmessage = onPerchWorkerMessage;
@@ -2474,7 +2474,7 @@ function ensureWorker() {
   if (state.worker) {
     state.worker.terminate();
   }
-  state.worker = new Worker('src/audio-worker.js?v=48.2');
+  state.worker = new Worker('src/audio-worker.js?v=48.3');
   state.worker.onmessage = onWorkerMessage;
   state.worker.onerror = (err) => {
     hideProcessing();
@@ -2831,7 +2831,7 @@ function initializeVisualEngine(){
   if(visualState.autoHeight) syncAutoVisualHeight(true);
   const fit=visualFitPxPerSec(),max=visualMaxPxPerSec(); visualState.pxPerSec=Math.max(fit,Math.min(visualState.pxPerSec,max));
   syncVisualZoomUi(); layoutSpectrogramStage(true); drawAxes(); drawOverlay();
-  visualState.worker=new Worker('src/visual-worker.js?v=48.2');
+  visualState.worker=new Worker('src/visual-worker.js?v=48.3');
   visualState.worker.onmessage=handleVisualWorkerMessage;
   visualState.worker.onerror=(err)=>{console.error(err);visualState.activeRequestKey=null;hideProcessing();showToast('Error del visor',err.message||'Falló el motor visual.',7000);};
   const copy=state.samples ? state.samples.slice() : new Float32Array();
@@ -3372,7 +3372,8 @@ function drawMatches(ctx) {
     const y1=m.frequencyLocalized===false?0:freqToY(m.fmax),y2=m.frequencyLocalized===false?state.display.height:freqToY(m.fmin);
     const rx=Math.min(x1,x2),ry=Math.min(y1,y2),rw=Math.abs(x2-x1),rh=Math.abs(y2-y1);
     ctx.save();ctx.lineWidth=1.6;ctx.strokeStyle=color;ctx.fillStyle=hexToRgba(color,.055);ctx.fillRect(rx,ry,rw,rh);ctx.strokeRect(rx,ry,rw,rh);ctx.restore();
-    drawAnnotationLabel(ctx,rx,ry,[displayLabelForTemplate(tpl||{})||m.etiqueta||'coincidencia',`${m.method || (m.methodKey === 'perch2' ? 'Perch2' : 'Búsqueda')} · score: ${Number(m.score).toFixed(2)}`],color);
+    const roiLabel=displayLabelForTemplate(tpl||{})||m.etiqueta||'coincidencia';
+    drawAnnotationLabel(ctx,rx,ry,[`${roiLabel} ${Number(m.score).toFixed(2)}`],color);
   }
 }
 

@@ -2,6 +2,15 @@
 
 Historial canónico de versiones de **Bioacoustic Template Labeler**.
 
+## v48.3 — 2026-08-16
+
+### Changed
+- Las etiquetas visibles sobre las cajas de coincidencias del espectrograma se reducen a una sola línea con **etiqueta + score**, por ejemplo `fonotipo1 0.87`.
+- Se eliminan de la caja visual el nombre del método, el texto `score:` y la segunda línea informativa; esa información continúa disponible en `Resultados`.
+
+### Preserved
+- Sin cambios en búsqueda clásica, Perch2, refinamiento temporal, plantillas, resultados, exportaciones, workers ni matemática.
+
 ## v48.2 — 2026-08-16
 
 ### Changed

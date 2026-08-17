@@ -7,7 +7,7 @@ Un cambio **no se considera terminado** hasta cumplir la sección **Definition o
 ## 1. Identidad del proyecto
 
 - Proyecto: **Bioacoustic Template Labeler**.
-- Versión estable de referencia de este documento: **v48.2**.
+- Versión estable de referencia de este documento: **v48.3**.
 - Tipo: aplicación web estática/local.
 - Objetivo: seleccionar plantillas acústicas sobre espectrogramas, buscar patrones similares, revisar coincidencias y exportar resultados.
 - Filosofía: procesamiento local, arquitectura explícita, comportamiento reproducible y fundamento matemático documentado.
