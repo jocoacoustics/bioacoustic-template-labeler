@@ -69,6 +69,11 @@ const state = {
   matches: [],
   tableSort: { key: 'score', dir: 'desc' },
   worker: null,
+  perchWorker: null,
+  perchBusy: false,
+  perchBackend: null,
+  perchAudioReady: false,
+  currentPerchTemplateId: null,
   dragging: false,
   moved: false,
   preventRoiEdit: false,
@@ -211,6 +216,42 @@ const el = {
   btnSearch: document.getElementById('btnSearch'),
   btnClearMatches: document.getElementById('btnClearMatches'),
   matchSummary: document.getElementById('matchSummary'),
+  perchTemplateChips: document.getElementById('perchTemplateChips'),
+  btnPrevPerchTemplate: document.getElementById('btnPrevPerchTemplate'),
+  btnNextPerchTemplate: document.getElementById('btnNextPerchTemplate'),
+  perchTemplatePager: document.getElementById('perchTemplatePager'),
+  perchTplMode: document.getElementById('perchTplMode'),
+  perchTplSample: document.getElementById('perchTplSample'),
+  perchTplTime: document.getElementById('perchTplTime'),
+  perchTplFreq: document.getElementById('perchTplFreq'),
+  perchMultiWarning: document.getElementById('perchMultiWarning'),
+  perchSignalMode: document.getElementById('perchSignalMode'),
+  perchSignalSegments: document.getElementById('perchSignalSegments'),
+  perchBandPanel: document.getElementById('perchBandPanel'),
+  perchFminRange: document.getElementById('perchFminRange'),
+  perchFmaxRange: document.getElementById('perchFmaxRange'),
+  perchRangeFill: document.getElementById('perchRangeFill'),
+  perchFminInput: document.getElementById('perchFminInput'),
+  perchFmaxInput: document.getElementById('perchFmaxInput'),
+  perchBandRangeText: document.getElementById('perchBandRangeText'),
+  perchRangeMinLabel: document.getElementById('perchRangeMinLabel'),
+  perchRangeMaxLabel: document.getElementById('perchRangeMaxLabel'),
+  perchStride: document.getElementById('perchStride'),
+  perchStrideInput: document.getElementById('perchStrideInput'),
+  perchWindowEstimate: document.getElementById('perchWindowEstimate'),
+  perchScore: document.getElementById('perchScore'),
+  perchScoreInput: document.getElementById('perchScoreInput'),
+  perchIou: document.getElementById('perchIou'),
+  perchIouInput: document.getElementById('perchIouInput'),
+  perchExcludeTemplate: document.getElementById('perchExcludeTemplate'),
+  perchLocalBadge: document.getElementById('perchLocalBadge'),
+  perchProgressWrap: document.getElementById('perchProgressWrap'),
+  perchModelStatus: document.getElementById('perchModelStatus'),
+  perchProgressPct: document.getElementById('perchProgressPct'),
+  perchProgressBar: document.getElementById('perchProgressBar'),
+  btnSearchPerch: document.getElementById('btnSearchPerch'),
+  btnCancelPerch: document.getElementById('btnCancelPerch'),
+  perchSummary: document.getElementById('perchSummary'),
   matchesTable: document.getElementById('matchesTable'),
   resultsFooterSummary: document.getElementById('resultsFooterSummary'),
   accordionPanels: Array.from(document.querySelectorAll('.accordion-panel')),
@@ -303,6 +344,7 @@ function resetPanelsForInitialState() {
   setPanelOpen('spectrogram-config', false);
   setPanelOpen('roi', false);
   setPanelOpen('search', false);
+  setPanelOpen('perch-search', false);
   setPanelOpen('results', false);
 }
 
@@ -310,6 +352,7 @@ function openRoiStep() {
   setPanelOpen('guide', false);
   setPanelOpen('roi', true);
   setPanelOpen('search', false);
+  setPanelOpen('perch-search', false);
   setPanelOpen('results', false);
 }
 
@@ -320,6 +363,7 @@ function focusTemplateStep() {
   setPanelOpen('spectrogram-config', false);
   setPanelOpen('roi', true);
   setPanelOpen('search', false);
+  setPanelOpen('perch-search', false);
   setPanelOpen('results', false);
   scrollSidePanelTo('roi');
 }
@@ -329,20 +373,33 @@ function openSearchStep() {
   setPanelOpen('spectrogram-config', false);
   setPanelOpen('roi', false);
   setPanelOpen('search', true);
+  setPanelOpen('perch-search', false);
   setPanelOpen('results', false);
   scrollSidePanelTo('search');
 }
 
-function openResultsStep() {
-  // Después de buscar, mantenemos Búsqueda y Resultados abiertos.
-  // Además cerramos los paneles superiores para que Búsqueda quede alineado arriba.
+function openPerchStep() {
   setPanelOpen('guide', false);
   setPanelOpen('spectrogram-config', false);
   setPanelOpen('roi', false);
-  setPanelOpen('search', true);
+  setPanelOpen('search', false);
+  setPanelOpen('perch-search', true);
+  setPanelOpen('results', false);
+  scrollSidePanelTo('perch-search');
+}
+
+function openResultsStep(origin = 'search') {
+  // La tabla Resultados es compartida. Mantenemos abierto el motor que originó la búsqueda.
+  const fromPerch = origin === 'perch';
+  const target = fromPerch ? 'perch-search' : 'search';
+  setPanelOpen('guide', false);
+  setPanelOpen('spectrogram-config', false);
+  setPanelOpen('roi', false);
+  setPanelOpen('search', !fromPerch);
+  setPanelOpen('perch-search', fromPerch);
   setPanelOpen('results', true);
-  scrollSidePanelTo('search');
-  window.setTimeout(() => scrollSidePanelTo('search', 'auto'), 260);
+  scrollSidePanelTo(target);
+  window.setTimeout(() => scrollSidePanelTo(target, 'auto'), 260);
 }
 
 function escapeHtml(value) {
@@ -365,6 +422,12 @@ function clamp(v, a, b) {
 
 function resetForNewAudio() {
   if (visualState.worker) { visualState.worker.terminate(); visualState.worker = null; }
+  if (state.perchWorker) { state.perchWorker.terminate(); state.perchWorker = null; }
+  state.perchBusy = false;
+  state.perchBackend = null;
+  state.perchAudioReady = false;
+  state.currentPerchTemplateId = null;
+  setPerchProgress(0, 'Modelo pendiente · se cargará al buscar', 'idle');
   Object.assign(visualState, {workerReady:false,overview:null,initialized:false,autoHeight:true,epoch:visualState.epoch+1,requestQueue:[],activeRequestKey:null,backgroundWarmScheduled:false,paintStart:0,paintEnd:0}); visualState.tiles.clear(); visualState.pending.clear();
 
   state.roi = null;
@@ -402,6 +465,8 @@ function resetForNewAudio() {
   if (el.useMultiSamples) el.useMultiSamples.checked = false;
   if (el.sampleEstimator) el.sampleEstimator.value = 'consensus_ncc';
   updateSamplePanelState(null);
+  applyPerchConfigToUi(null);
+  updatePerchButtonsState();
   el.spectrogramTitle.textContent = state.file ? `Espectrograma · ${state.file.name}` : 'Sin espectrograma';
   if (el.btnApplyRoi) el.btnApplyRoi.disabled = true;
   if (el.btnSaveRoi) el.btnSaveRoi.disabled = true;
@@ -422,6 +487,428 @@ function resetForNewAudio() {
 
 function getActiveTemplate() {
   return state.templates.find(t => t.id === state.activeTemplateId) || null;
+}
+
+const PERCH2_DEFAULTS = Object.freeze({
+  signalMode: 'full',
+  strideSec: 0.50,
+  scoreThreshold: 0.70,
+  maxIou: 0.30,
+  excludeTemplate: true,
+});
+
+function perchNyquist() {
+  const nativeNyquist = state.sampleRate > 0 ? state.sampleRate / 2 : 16000;
+  return Math.max(100, Math.min(16000, nativeNyquist));
+}
+
+function getPerchReferenceRoi(tpl) {
+  if (!tpl) return null;
+  if (tpl.useMultiSamples) {
+    // Invariante v46: Perch2 usa SOLO la primera muestra real de una plantilla multimuestra.
+    const first = Array.isArray(tpl.samples) ? tpl.samples[0] : null;
+    return isRoiValid(first) ? cloneRoi(first) : null;
+  }
+  return isTemplateValid(tpl) ? cloneRoi(tpl) : null;
+}
+
+function ensurePerchConfig(tpl) {
+  if (!tpl) return null;
+  if (!Array.isArray(tpl.perchMatches)) tpl.perchMatches = [];
+  const cfg = tpl.perch2 && typeof tpl.perch2 === 'object' ? tpl.perch2 : {};
+  cfg.signalMode = ['full', 'band', 'compare'].includes(cfg.signalMode) ? cfg.signalMode : PERCH2_DEFAULTS.signalMode;
+  cfg.strideSec = clamp(Number(cfg.strideSec ?? PERCH2_DEFAULTS.strideSec), 0.25, 2.00);
+  cfg.scoreThreshold = clamp(Number(cfg.scoreThreshold ?? PERCH2_DEFAULTS.scoreThreshold), -1, 1);
+  cfg.maxIou = clamp(Number(cfg.maxIou ?? PERCH2_DEFAULTS.maxIou), 0, 1);
+  cfg.excludeTemplate = cfg.excludeTemplate !== false;
+  if (!Array.isArray(cfg.candidates)) cfg.candidates = [];
+  cfg.hasSearched = Boolean(cfg.hasSearched);
+  cfg.bandInitialized = Boolean(cfg.bandInitialized);
+
+  const maxHz = perchNyquist();
+  const ref = getPerchReferenceRoi(tpl);
+  if (!cfg.bandInitialized && ref) {
+    cfg.bandFminHz = clamp(Number(ref.fmin) || 0, 0, maxHz);
+    cfg.bandFmaxHz = clamp(Number(ref.fmax) || maxHz, 0, maxHz);
+    if (cfg.bandFmaxHz <= cfg.bandFminHz) cfg.bandFmaxHz = Math.min(maxHz, cfg.bandFminHz + 100);
+    cfg.bandInitialized = true;
+  } else {
+    cfg.bandFminHz = clamp(Number(cfg.bandFminHz) || 0, 0, maxHz);
+    cfg.bandFmaxHz = clamp(Number(cfg.bandFmaxHz) || maxHz, 0, maxHz);
+    if (cfg.bandFmaxHz <= cfg.bandFminHz) cfg.bandFmaxHz = Math.min(maxHz, cfg.bandFminHz + 100);
+  }
+  tpl.perch2 = cfg;
+  return cfg;
+}
+
+function invalidatePerchResults(tpl) {
+  if (!tpl) return;
+  const cfg = ensurePerchConfig(tpl);
+  tpl.perchMatches = [];
+  cfg.candidates = [];
+  cfg.hasSearched = false;
+  cfg.lastRun = null;
+}
+
+function hzToMel(hz) {
+  return 2595 * Math.log10(1 + Math.max(0, Number(hz) || 0) / 700);
+}
+
+function melToHz(mel) {
+  return 700 * (Math.pow(10, Math.max(0, Number(mel) || 0) / 2595) - 1);
+}
+
+function perchHzToSlider(hz) {
+  const maxMel = hzToMel(perchNyquist()) || 1;
+  return clamp(Math.round(hzToMel(hz) / maxMel * 1000), 0, 1000);
+}
+
+function perchSliderToHz(value) {
+  const maxMel = hzToMel(perchNyquist()) || 1;
+  return clamp(melToHz(clamp(Number(value) || 0, 0, 1000) / 1000 * maxMel), 0, perchNyquist());
+}
+
+function setPerchModeButtons(mode) {
+  const safe = ['full', 'band', 'compare'].includes(mode) ? mode : 'full';
+  if (el.perchSignalMode) el.perchSignalMode.value = safe;
+  el.perchSignalSegments?.querySelectorAll('[data-perch-mode]').forEach(btn => {
+    btn.classList.toggle('active', btn.dataset.perchMode === safe);
+    btn.setAttribute('aria-checked', btn.dataset.perchMode === safe ? 'true' : 'false');
+  });
+  // Audio completo es el default. El panel manual solo se despliega si la banda participa.
+  if (el.perchBandPanel) el.perchBandPanel.classList.toggle('is-hidden', safe === 'full');
+}
+
+function setPerchProgress(progress = 0, message = '', status = 'idle') {
+  const pct = clamp(Number(progress) || 0, 0, 100);
+  if (el.perchProgressBar) el.perchProgressBar.style.width = `${pct}%`;
+  if (el.perchProgressPct) el.perchProgressPct.textContent = `${Math.round(pct)}%`;
+  if (el.perchModelStatus && message) el.perchModelStatus.textContent = message;
+  if (el.perchProgressWrap) {
+    el.perchProgressWrap.classList.toggle('is-running', status === 'running');
+    el.perchProgressWrap.classList.toggle('is-ready', status === 'ready');
+    el.perchProgressWrap.classList.toggle('is-error', status === 'error');
+  }
+}
+
+function setPerchBandHandlesFromHz(fminHz, fmaxHz) {
+  if (!el.perchFminRange || !el.perchFmaxRange) return;
+  let lo = clamp(Number(fminHz) || 0, 0, perchNyquist());
+  let hi = clamp(Number(fmaxHz) || perchNyquist(), 0, perchNyquist());
+  if (lo > hi) [lo, hi] = [hi, lo];
+  el.perchFminRange.value = String(perchHzToSlider(lo));
+  el.perchFmaxRange.value = String(perchHzToSlider(hi));
+  updatePerchDualRangeVisual();
+}
+
+function updatePerchDualRangeVisual(changed = '') {
+  if (!el.perchFminRange || !el.perchFmaxRange) return;
+  let lo = Number(el.perchFminRange.value) || 0;
+  let hi = Number(el.perchFmaxRange.value) || 1000;
+  const minGap = 2;
+  if (lo > hi - minGap) {
+    if (changed === 'min') lo = Math.max(0, hi - minGap);
+    else hi = Math.min(1000, lo + minGap);
+  }
+  el.perchFminRange.value = String(lo);
+  el.perchFmaxRange.value = String(hi);
+  el.perchFminRange.style.zIndex = changed === 'min' ? '6' : '3';
+  el.perchFmaxRange.style.zIndex = changed === 'max' ? '6' : '4';
+
+  const fmin = perchSliderToHz(lo);
+  const fmax = perchSliderToHz(hi);
+  if (el.perchRangeFill) {
+    el.perchRangeFill.style.left = `${lo / 10}%`;
+    el.perchRangeFill.style.width = `${Math.max(0, hi - lo) / 10}%`;
+  }
+  if (el.perchFminInput) {
+    el.perchFminInput.max = (perchNyquist() / 1000).toFixed(3);
+    el.perchFminInput.value = (fmin / 1000).toFixed(2);
+  }
+  if (el.perchFmaxInput) {
+    el.perchFmaxInput.max = (perchNyquist() / 1000).toFixed(3);
+    el.perchFmaxInput.value = (fmax / 1000).toFixed(2);
+  }
+  if (el.perchBandRangeText) el.perchBandRangeText.textContent = `${(fmin/1000).toFixed(2)}–${(fmax/1000).toFixed(2)} kHz`;
+  if (el.perchRangeMinLabel) el.perchRangeMinLabel.textContent = '0.00 kHz';
+  if (el.perchRangeMaxLabel) el.perchRangeMaxLabel.textContent = `${(perchNyquist()/1000).toFixed(2)} kHz`;
+}
+
+function syncPerchBandHandlesFromInputs(changed = '') {
+  if (!el.perchFminInput || !el.perchFmaxInput) return;
+  let lo = clamp(Number(el.perchFminInput.value) * 1000 || 0, 0, perchNyquist());
+  let hi = clamp(Number(el.perchFmaxInput.value) * 1000 || perchNyquist(), 0, perchNyquist());
+  if (lo >= hi) {
+    if (changed === 'min') lo = Math.max(0, hi - 10);
+    else hi = Math.min(perchNyquist(), lo + 10);
+  }
+  setPerchBandHandlesFromHz(lo, hi);
+}
+
+function updatePerchWindowEstimate() {
+  if (!el.perchWindowEstimate) return;
+  const stride = clamp(Number(el.perchStride?.value || el.perchStrideInput?.value || 0.5), 0.25, 2);
+  if (!(state.duration > 0)) { el.perchWindowEstimate.textContent = '0'; return; }
+  if (state.duration <= 5) { el.perchWindowEstimate.textContent = '1'; return; }
+  const maxStart = Math.max(0, state.duration - 5);
+  const base = Math.floor(maxStart / stride) + 1;
+  const lastStart = (base - 1) * stride;
+  const count = Math.abs(lastStart - maxStart) > Math.min(stride * 0.25, 0.05) ? base + 1 : base;
+  el.perchWindowEstimate.textContent = String(count);
+}
+
+function updatePerchTemplateSummary(tpl = getActiveTemplate()) {
+  const ref = getPerchReferenceRoi(tpl);
+  if (!tpl || !ref) {
+    if (el.perchTplMode) el.perchTplMode.textContent = 'Modo: —';
+    if (el.perchTplSample) el.perchTplSample.textContent = 'Muestra Perch2: —';
+    if (el.perchTplTime) el.perchTplTime.textContent = 'Tiempo: —';
+    if (el.perchTplFreq) el.perchTplFreq.textContent = 'Frecuencia: —';
+    if (el.perchMultiWarning) el.perchMultiWarning.classList.add('is-hidden');
+    return;
+  }
+  const multi = Boolean(tpl.useMultiSamples);
+  if (el.perchTplMode) el.perchTplMode.textContent = `Modo: ${multi ? 'Multi-muestra' : 'Simple'}`;
+  if (el.perchTplSample) el.perchTplSample.textContent = multi ? 'Muestra usada por Perch2: #1' : 'Muestra usada: plantilla simple';
+  if (el.perchTplTime) el.perchTplTime.textContent = `Tiempo: ${fmt(ref.tmin,2)}–${fmt(ref.tmax,2)} s`;
+  if (el.perchTplFreq) el.perchTplFreq.textContent = `Frecuencia: ${fmt(ref.fmin/1000,2)}–${fmt(ref.fmax/1000,2)} kHz`;
+  if (el.perchMultiWarning) el.perchMultiWarning.classList.toggle('is-hidden', !multi);
+}
+
+function applyPerchConfigToUi(tpl) {
+  updatePerchTemplateSummary(tpl);
+  const cfg = tpl ? ensurePerchConfig(tpl) : null;
+  const mode = cfg?.signalMode || PERCH2_DEFAULTS.signalMode;
+  setPerchModeButtons(mode);
+  if (el.perchStride) el.perchStride.value = String(cfg?.strideSec ?? PERCH2_DEFAULTS.strideSec);
+  if (el.perchStrideInput) el.perchStrideInput.value = Number(cfg?.strideSec ?? PERCH2_DEFAULTS.strideSec).toFixed(2);
+  if (el.perchScore) el.perchScore.value = String(cfg?.scoreThreshold ?? PERCH2_DEFAULTS.scoreThreshold);
+  if (el.perchScoreInput) el.perchScoreInput.value = Number(cfg?.scoreThreshold ?? PERCH2_DEFAULTS.scoreThreshold).toFixed(2);
+  if (el.perchIou) el.perchIou.value = String(cfg?.maxIou ?? PERCH2_DEFAULTS.maxIou);
+  if (el.perchIouInput) el.perchIouInput.value = Number(cfg?.maxIou ?? PERCH2_DEFAULTS.maxIou).toFixed(2);
+  if (el.perchExcludeTemplate) el.perchExcludeTemplate.checked = cfg?.excludeTemplate ?? PERCH2_DEFAULTS.excludeTemplate;
+  setPerchBandHandlesFromHz(cfg?.bandFminHz ?? 0, cfg?.bandFmaxHz ?? perchNyquist());
+  updatePerchWindowEstimate();
+  updatePerchSummary(tpl);
+  updatePerchButtonsState();
+}
+
+function syncActiveTemplatePerchParamsFromUi({ invalidateExpensive = false, refreshFilters = false } = {}) {
+  const tpl = getActiveTemplate();
+  if (!tpl) return;
+  const cfg = ensurePerchConfig(tpl);
+  const previous = `${cfg.signalMode}|${cfg.strideSec}|${Math.round(cfg.bandFminHz)}|${Math.round(cfg.bandFmaxHz)}`;
+  cfg.signalMode = ['full','band','compare'].includes(el.perchSignalMode?.value) ? el.perchSignalMode.value : 'full';
+  cfg.strideSec = clamp(Number(el.perchStride?.value ?? el.perchStrideInput?.value ?? cfg.strideSec), 0.25, 2.00);
+  cfg.scoreThreshold = clamp(Number(el.perchScore?.value ?? el.perchScoreInput?.value ?? cfg.scoreThreshold), -1, 1);
+  cfg.maxIou = clamp(Number(el.perchIou?.value ?? el.perchIouInput?.value ?? cfg.maxIou), 0, 1);
+  cfg.excludeTemplate = Boolean(el.perchExcludeTemplate?.checked);
+  cfg.bandFminHz = clamp(Number(el.perchFminInput?.value) * 1000 || 0, 0, perchNyquist());
+  cfg.bandFmaxHz = clamp(Number(el.perchFmaxInput?.value) * 1000 || perchNyquist(), 0, perchNyquist());
+  cfg.bandInitialized = true;
+  const current = `${cfg.signalMode}|${cfg.strideSec}|${Math.round(cfg.bandFminHz)}|${Math.round(cfg.bandFmaxHz)}`;
+  if (invalidateExpensive && previous !== current) {
+    invalidatePerchResults(tpl);
+    refreshCombinedMatches();
+    drawOverlay();
+  } else if (refreshFilters && cfg.candidates.length) {
+    refreshPerchMatchesFromCache(tpl);
+  }
+  updatePerchWindowEstimate();
+  updatePerchSummary(tpl);
+  updatePerchButtonsState();
+}
+
+function temporalIou(a, b) {
+  const inter = Math.max(0, Math.min(a.tmax, b.tmax) - Math.max(a.tmin, b.tmin));
+  const union = Math.max(0, Math.max(a.tmax, b.tmax) - Math.min(a.tmin, b.tmin));
+  return union > 0 ? inter / union : 0;
+}
+
+function perchCandidateView(candidate, cfg) {
+  if (cfg.signalMode === 'band') return { score: Number(candidate.scoreBand), source: 'band' };
+  if (cfg.signalMode === 'compare') {
+    const raw = Number(candidate.scoreRaw); const band = Number(candidate.scoreBand);
+    if (Number.isFinite(band) && (!Number.isFinite(raw) || band > raw)) return { score: band, source: 'band' };
+    return { score: raw, source: 'full' };
+  }
+  return { score: Number(candidate.scoreRaw), source: 'full' };
+}
+
+function buildPerchMatchesFromCandidates(tpl) {
+  const cfg = ensurePerchConfig(tpl);
+  const ref = getPerchReferenceRoi(tpl);
+  if (!ref || !cfg.candidates.length) return [];
+  const eligible = [];
+  for (const candidate of cfg.candidates) {
+    const view = perchCandidateView(candidate, cfg);
+    if (!Number.isFinite(view.score) || view.score < cfg.scoreThreshold) continue;
+    if (cfg.excludeTemplate && Math.max(candidate.tmin, ref.tmin) < Math.min(candidate.tmax, ref.tmax)) continue;
+    eligible.push({ ...candidate, score: view.score, perchSource: view.source });
+  }
+  eligible.sort((a,b) => b.score - a.score || a.tmin - b.tmin);
+  const kept = [];
+  for (const candidate of eligible) {
+    if (kept.some(prev => temporalIou(prev, candidate) > cfg.maxIou)) continue;
+    kept.push(candidate);
+    if (kept.length >= CONFIG.maxMatchesToStore) break;
+  }
+  const etiqueta = displayLabelForTemplate(tpl);
+  return kept.map(candidate => {
+    const bandWinner = candidate.perchSource === 'band';
+    return {
+      tmin: Number(candidate.tmin), tmax: Number(candidate.tmax),
+      fmin: bandWinner ? cfg.bandFminHz : ref.fmin,
+      fmax: bandWinner ? cfg.bandFmaxHz : ref.fmax,
+      score: Number(candidate.score), etiqueta, templateId: tpl.id, templateLabel: etiqueta, color: tpl.color,
+      methodKey: 'perch2', method: bandWinner ? 'Perch2 · banda' : 'Perch2 · audio', perchSource: candidate.perchSource,
+    };
+  });
+}
+
+function refreshPerchMatchesFromCache(tpl = getActiveTemplate()) {
+  if (!tpl) return;
+  tpl.perchMatches = buildPerchMatchesFromCandidates(tpl);
+  refreshCombinedMatches();
+  updatePerchSummary(tpl);
+  drawOverlay();
+}
+
+function updatePerchSummary(tpl = getActiveTemplate()) {
+  if (!el.perchSummary) return;
+  if (!tpl || !isTemplateValid(tpl)) {
+    el.perchSummary.textContent = 'Selecciona una plantilla válida para buscar con Perch2.';
+    return;
+  }
+  const cfg = ensurePerchConfig(tpl);
+  if (!cfg.hasSearched) {
+    el.perchSummary.textContent = `Pendiente · ${cfg.signalMode === 'full' ? 'audio completo' : cfg.signalMode === 'band' ? 'banda de frecuencias' : 'comparación audio/banda'} · paso ${cfg.strideSec.toFixed(2)} s.`;
+    return;
+  }
+  const totalCandidates = cfg.candidates.length;
+  const total = (tpl.perchMatches || []).length;
+  const best = total ? Math.max(...tpl.perchMatches.map(m => m.score)) : null;
+  const run = cfg.lastRun || {};
+  const backend = run.backend || state.perchBackend || 'local';
+  el.perchSummary.textContent = `Perch2 · ${totalCandidates} ventanas · ${total} coincidencia${total===1?'':'s'} después de score/IoU${best != null ? ` · mejor coseno ${best.toFixed(3)}` : ''} · ${backend}.`;
+}
+
+function updatePerchButtonsState() {
+  const tpl = getActiveTemplate();
+  const enabled = Boolean(tpl && getPerchReferenceRoi(tpl) && state.samples?.length && !state.perchBusy);
+  if (el.btnSearchPerch) el.btnSearchPerch.disabled = !enabled;
+  if (el.btnCancelPerch) el.btnCancelPerch.disabled = !state.perchBusy;
+  if (el.perchSignalSegments) el.perchSignalSegments.querySelectorAll('button').forEach(btn => { btn.disabled = state.perchBusy; });
+  [el.perchStride, el.perchStrideInput, el.perchFminRange, el.perchFmaxRange, el.perchFminInput, el.perchFmaxInput].forEach(node => { if (node) node.disabled = state.perchBusy; });
+}
+
+function ensurePerchWorker() {
+  if (state.perchWorker) return state.perchWorker;
+  if (!state.samples?.length || !(state.sampleRate > 0)) return null;
+  const worker = new Worker('src/perch-worker.js?v=46');
+  state.perchWorker = worker;
+  state.perchAudioReady = false;
+  worker.onmessage = onPerchWorkerMessage;
+  worker.onerror = (err) => {
+    console.error(err);
+    state.perchBusy = false;
+    setPerchProgress(0, err.message || 'Error del worker Perch2', 'error');
+    updatePerchButtonsState();
+    showToast('Error Perch2', err.message || 'Falló el worker Perch2.', 8000);
+  };
+  const copy = state.samples.slice();
+  worker.postMessage({ type: 'init-audio', samples: copy, sampleRate: state.sampleRate }, [copy.buffer]);
+  return worker;
+}
+
+function startPerchSearch() {
+  const tpl = getActiveTemplate();
+  const ref = getPerchReferenceRoi(tpl);
+  if (!tpl || !ref) {
+    showToast('Sin plantilla Perch2', 'Selecciona una plantilla simple o una multimuestra con al menos una muestra válida.');
+    return;
+  }
+  syncActiveTemplatePerchParamsFromUi();
+  const cfg = ensurePerchConfig(tpl);
+  if ((cfg.signalMode === 'band' || cfg.signalMode === 'compare') && !(cfg.bandFmaxHz > cfg.bandFminHz)) {
+    showToast('Banda inválida', 'fmax debe ser mayor que fmin.');
+    return;
+  }
+  const worker = ensurePerchWorker();
+  if (!worker) return;
+  state.perchBusy = true;
+  state.currentPerchTemplateId = tpl.id;
+  setPerchProgress(1, 'Preparando Perch2 local…', 'running');
+  updatePerchButtonsState();
+  openPerchStep();
+  worker.postMessage({
+    type: 'search', mode: cfg.signalMode, strideSec: cfg.strideSec,
+    bandFminHz: cfg.bandFminHz, bandFmaxHz: cfg.bandFmaxHz,
+    template: ref,
+  });
+}
+
+function cancelPerchSearch() {
+  if (!state.perchWorker || !state.perchBusy) return;
+  state.perchWorker.postMessage({ type: 'cancel' });
+  if (el.perchModelStatus) el.perchModelStatus.textContent = 'Cancelando búsqueda Perch2…';
+}
+
+function onPerchWorkerMessage(ev) {
+  const msg = ev.data || {};
+  if (msg.type === 'perch-audio-ready') {
+    state.perchAudioReady = true;
+    return;
+  }
+  if (msg.type === 'perch-model-progress' || msg.type === 'perch-search-progress') {
+    setPerchProgress(msg.progress ?? 0, msg.message || 'Procesando Perch2…', 'running');
+    return;
+  }
+  if (msg.type === 'perch-model-ready') {
+    state.perchBackend = msg.backend || 'local';
+    if (el.perchLocalBadge) el.perchLocalBadge.textContent = `LOCAL · ${String(state.perchBackend).toUpperCase()}`;
+    setPerchProgress(100, `Modelo listo · ${state.perchBackend} local`, 'ready');
+    return;
+  }
+  if (msg.type === 'perch-search-ready') {
+    const tpl = state.templates.find(t => t.id === state.currentPerchTemplateId);
+    state.perchBusy = false;
+    if (tpl) {
+      const cfg = ensurePerchConfig(tpl);
+      cfg.candidates = Array.isArray(msg.candidates) ? msg.candidates : [];
+      cfg.hasSearched = true;
+      cfg.lastRun = { backend: msg.backend || state.perchBackend || 'local', windows: msg.windows || cfg.candidates.length, contexts: msg.contexts || 1, elapsedMs: msg.elapsedMs || 0 };
+      tpl.perchMatches = buildPerchMatchesFromCandidates(tpl);
+    }
+    state.currentPerchTemplateId = null;
+    setPerchProgress(100, `Modelo listo · ${(msg.backend || state.perchBackend || 'local')} local`, 'ready');
+    refreshCombinedMatches();
+    renderTemplateNavigator();
+    updatePerchButtonsState();
+    updatePerchSummary(tpl || getActiveTemplate());
+    drawOverlay();
+    const n = tpl ? (tpl.perchMatches || []).length : 0;
+    setStatus('Revisa resultados', n ? 'Perch2 encontró candidatos similares.' : 'Ajusta el score o la banda si no aparecen coincidencias.');
+    showToast('Perch2 terminado', n ? `${n} coincidencia${n===1?'':'s'} después de score e IoU.` : 'Sin coincidencias con los filtros actuales.');
+    openResultsStep('perch');
+    return;
+  }
+  if (msg.type === 'perch-cancelled') {
+    state.perchBusy = false;
+    state.currentPerchTemplateId = null;
+    setPerchProgress(0, 'Búsqueda Perch2 cancelada · resultados anteriores conservados', 'idle');
+    updatePerchButtonsState();
+    showToast('Perch2 cancelado', 'Se conservaron los resultados calculados anteriormente.');
+    return;
+  }
+  if (msg.type === 'perch-error') {
+    state.perchBusy = false;
+    state.currentPerchTemplateId = null;
+    console.error(msg.error);
+    setPerchProgress(0, 'Error en Perch2', 'error');
+    updatePerchButtonsState();
+    showToast('Error Perch2', msg.error || 'Ocurrió un error durante la inferencia.', 9000);
+  }
 }
 
 function makeTemplateId() {
@@ -1209,6 +1696,7 @@ function addCurrentSampleToActiveTemplate({ silent = false } = {}) {
     tpl.tmin = support.tmin; tpl.tmax = support.tmax; tpl.fmin = support.fmin; tpl.fmax = support.fmax;
   }
   tpl.matches = [];
+  invalidatePerchResults(tpl);
   tpl.hasSearched = false;
   tpl.autoAdjust = true;
   tpl.autoAdjustMode = 'balanceado';
@@ -1218,8 +1706,10 @@ function addCurrentSampleToActiveTemplate({ silent = false } = {}) {
   if (el.useMultiSamples) el.useMultiSamples.checked = true;
   if (el.sampleEstimator) el.sampleEstimator.value = tpl.sampleEstimator;
   updateSamplePanelState(tpl);
+  applyPerchConfigToUi(tpl);
   renderTemplateNavigator();
   updateSearchButtonsState();
+  refreshCombinedMatches();
   drawOverlay();
   if (!silent) showToast('Muestra agregada', `${displayLabelForTemplate(tpl)} tiene ${tpl.samples.length} muestra(s).`);
   return tpl;
@@ -1237,6 +1727,7 @@ function removeLastSampleFromActiveTemplate() {
     tpl.tmin = tpl.tmax = tpl.fmin = tpl.fmax = 0;
   }
   tpl.matches = [];
+  invalidatePerchResults(tpl);
   tpl.hasSearched = false;
   tpl.autoAdjust = true;
   tpl.autoAdjustMode = 'balanceado';
@@ -1244,6 +1735,7 @@ function removeLastSampleFromActiveTemplate() {
   renderTemplateNavigator();
   refreshCombinedMatches();
   updateSamplePanelState(tpl);
+  applyPerchConfigToUi(tpl);
   updateSearchSummaryText();
   drawOverlay();
 }
@@ -1296,6 +1788,7 @@ function updateSearchButtonsState() {
       el.btnSearch.textContent = 'Buscar similares';
     }
   }
+  updatePerchButtonsState();
 }
 
 function createDraftTemplate() {
@@ -1318,6 +1811,8 @@ function createDraftTemplate() {
     samples: [],
     previewCache: new Map(),
     matches: [],
+    perchMatches: [],
+    perch2: null,
     hasSearched: false,
     tmin: 0,
     tmax: 0,
@@ -1374,6 +1869,7 @@ function applyTemplateToFields(tpl) {
     if (el.useMultiSamples) el.useMultiSamples.checked = false;
     if (el.sampleEstimator) el.sampleEstimator.value = 'consensus_ncc';
     updateSamplePanelState(null);
+    applyPerchConfigToUi(null);
     el.roiSummary.textContent = 'Sin plantilla.';
     state.roi = null;
     drawOverlay();
@@ -1394,6 +1890,7 @@ function applyTemplateToFields(tpl) {
   if (el.useMultiSamples) el.useMultiSamples.checked = Boolean(tpl.useMultiSamples);
   if (el.sampleEstimator) el.sampleEstimator.value = tpl.sampleEstimator || 'consensus_ncc';
   updateSamplePanelState(tpl);
+  applyPerchConfigToUi(tpl);
   if (el.btnSaveRoi) el.btnSaveRoi.disabled = false;
   if (el.btnClearRoi) el.btnClearRoi.disabled = false;
   if (el.btnRemoveTemplate) el.btnRemoveTemplate.disabled = false;
@@ -1403,16 +1900,19 @@ function applyTemplateToFields(tpl) {
 }
 
 function renderTemplateNavigator() {
-  const chipTargets = [el.templateChips, el.searchTemplateChips].filter(Boolean);
+  const chipTargets = [el.templateChips, el.searchTemplateChips, el.perchTemplateChips].filter(Boolean);
   for (const target of chipTargets) target.innerHTML = '';
 
   if (!state.templates.length) {
     if (el.templatePager) el.templatePager.textContent = 'Sin plantillas';
     if (el.searchTemplatePager) el.searchTemplatePager.textContent = 'Sin plantillas';
+    if (el.perchTemplatePager) el.perchTemplatePager.textContent = 'Sin plantillas';
     if (el.btnPrevTemplate) el.btnPrevTemplate.disabled = true;
     if (el.btnNextTemplate) el.btnNextTemplate.disabled = true;
     if (el.btnPrevSearchTemplate) el.btnPrevSearchTemplate.disabled = true;
     if (el.btnNextSearchTemplate) el.btnNextSearchTemplate.disabled = true;
+    if (el.btnPrevPerchTemplate) el.btnPrevPerchTemplate.disabled = true;
+    if (el.btnNextPerchTemplate) el.btnNextPerchTemplate.disabled = true;
     if (el.btnRemoveTemplate) el.btnRemoveTemplate.disabled = true;
     if (el.btnSearchAllTemplates) el.btnSearchAllTemplates.disabled = true;
     return;
@@ -1425,8 +1925,9 @@ function renderTemplateNavigator() {
       btn.type = 'button';
       btn.className = `template-chip${tpl.id === state.activeTemplateId ? ' active' : ''}`;
       btn.style.setProperty('--tpl-color', tpl.color);
-      const statusIcon = !isTemplateValid(tpl) ? '○' : (tpl.hasSearched ? '✓' : '!');
-      const statusText = !isTemplateValid(tpl) ? 'sin caja válida' : (tpl.hasSearched ? 'buscada' : 'pendiente');
+      const searchedSomewhere = Boolean(tpl.hasSearched || tpl.perch2?.hasSearched);
+      const statusIcon = !isTemplateValid(tpl) ? '○' : (searchedSomewhere ? '✓' : '!');
+      const statusText = !isTemplateValid(tpl) ? 'sin caja válida' : (searchedSomewhere ? 'con resultados' : 'pendiente');
       btn.innerHTML = `<span class="chip-status" aria-hidden="true">${statusIcon}</span><span class="chip-label">${escapeHtml(displayLabelForTemplate(tpl))}</span>`;
       btn.title = `Plantilla ${idx + 1} · ${statusText}`;
       btn.addEventListener('click', () => setActiveTemplate(tpl.id));
@@ -1441,10 +1942,13 @@ function renderTemplateNavigator() {
     const pagerText = 'Nueva plantilla · dibuja una caja';
     if (el.templatePager) el.templatePager.textContent = pagerText;
     if (el.searchTemplatePager) el.searchTemplatePager.textContent = 'Selecciona una plantilla';
+    if (el.perchTemplatePager) el.perchTemplatePager.textContent = 'Selecciona una plantilla';
     if (el.btnPrevTemplate) el.btnPrevTemplate.disabled = true;
     if (el.btnNextTemplate) el.btnNextTemplate.disabled = true;
     if (el.btnPrevSearchTemplate) el.btnPrevSearchTemplate.disabled = true;
     if (el.btnNextSearchTemplate) el.btnNextSearchTemplate.disabled = true;
+    if (el.btnPrevPerchTemplate) el.btnPrevPerchTemplate.disabled = true;
+    if (el.btnNextPerchTemplate) el.btnNextPerchTemplate.disabled = true;
     if (el.btnRemoveTemplate) el.btnRemoveTemplate.disabled = true;
     if (typeof updateSearchButtonsState === 'function') updateSearchButtonsState();
     return;
@@ -1455,15 +1959,19 @@ function renderTemplateNavigator() {
   const pagerText = `Plantilla ${idx + 1} de ${state.templates.length} · ${displayLabelForTemplate(tpl)}`;
   if (el.templatePager) el.templatePager.textContent = pagerText;
   if (el.searchTemplatePager) el.searchTemplatePager.textContent = pagerText;
+  if (el.perchTemplatePager) el.perchTemplatePager.textContent = pagerText;
   if (el.btnPrevTemplate) el.btnPrevTemplate.disabled = state.templates.length <= 1;
   if (el.btnNextTemplate) el.btnNextTemplate.disabled = state.templates.length <= 1;
   if (el.btnPrevSearchTemplate) el.btnPrevSearchTemplate.disabled = state.templates.length <= 1;
   if (el.btnNextSearchTemplate) el.btnNextSearchTemplate.disabled = state.templates.length <= 1;
+  if (el.btnPrevPerchTemplate) el.btnPrevPerchTemplate.disabled = state.templates.length <= 1;
+  if (el.btnNextPerchTemplate) el.btnNextPerchTemplate.disabled = state.templates.length <= 1;
   if (el.btnRemoveTemplate) el.btnRemoveTemplate.disabled = false;
   if (typeof updateSearchButtonsState === 'function') updateSearchButtonsState();
 }
 function setActiveTemplate(id) {
   syncActiveTemplateParamsFromUi();
+  syncActiveTemplatePerchParamsFromUi();
   const tpl = state.templates.find(t => t.id === id);
   if (!tpl) return;
   state.activeTemplateId = id;
@@ -1494,6 +2002,7 @@ function clearFieldsForNewTemplate() {
   if (el.useMultiSamples) el.useMultiSamples.checked = false;
   if (el.sampleEstimator) el.sampleEstimator.value = 'consensus_ncc';
   updateSamplePanelState(null);
+  applyPerchConfigToUi(null);
   setAutoAdjustControls('balanceado');
   if (el.showActiveMatches) el.showActiveMatches.checked = true;
   el.roiSummary.textContent = 'Dibuja una caja para crear la primera plantilla.';
@@ -1505,6 +2014,7 @@ function clearFieldsForNewTemplate() {
 
 function addTemplatePlaceholder() {
   syncActiveTemplateParamsFromUi();
+  syncActiveTemplatePerchParamsFromUi();
   const tpl = createDraftTemplate();
   state.roi = null;
   el.roiTmin.value = 0;
@@ -1548,7 +2058,10 @@ function removeActiveTemplate() {
   showToast('Plantilla eliminada', `${displayLabelForTemplate(removed)} fue retirada con sus coincidencias.`);
 }
 function getAllMatches() {
-  return state.templates.flatMap(tpl => (tpl.matches || []).map(m => ({ ...m })));
+  return state.templates.flatMap(tpl => [
+    ...(tpl.matches || []),
+    ...(tpl.perchMatches || []),
+  ].map(m => ({ ...m })));
 }
 
 function refreshCombinedMatches() {
@@ -1623,7 +2136,7 @@ function ensureWorker() {
   if (state.worker) {
     state.worker.terminate();
   }
-  state.worker = new Worker('src/audio-worker.js?v=45.8');
+  state.worker = new Worker('src/audio-worker.js?v=46');
   state.worker.onmessage = onWorkerMessage;
   state.worker.onerror = (err) => {
     hideProcessing();
@@ -1695,7 +2208,7 @@ function onWorkerMessage(ev) {
     }
     if (tpl) {
       const etiqueta = displayLabelForTemplate(tpl);
-      tpl.matches = (msg.matches || []).map(m => ({ ...addEtiquetaToMatch(m, etiqueta), templateId: tpl.id, templateLabel: etiqueta, color: tpl.color }));
+      tpl.matches = (msg.matches || []).map(m => ({ ...addEtiquetaToMatch(m, etiqueta), templateId: tpl.id, templateLabel: etiqueta, color: tpl.color, methodKey: 'classic', method: 'Búsqueda clásica' }));
       tpl.hasSearched = true;
       tpl.showMatches = tpl.showMatches !== false;
       state.searchResultsAccumulator.push({ template: tpl, count: tpl.matches.length, auto: msg.auto || null });
@@ -1978,7 +2491,7 @@ function initializeVisualEngine(){
   if(visualState.autoHeight) syncAutoVisualHeight(true);
   const fit=visualFitPxPerSec(),max=visualMaxPxPerSec(); visualState.pxPerSec=Math.max(fit,Math.min(visualState.pxPerSec,max));
   syncVisualZoomUi(); layoutSpectrogramStage(true); drawAxes(); drawOverlay();
-  visualState.worker=new Worker('src/visual-worker.js?v=45.8');
+  visualState.worker=new Worker('src/visual-worker.js?v=46');
   visualState.worker.onmessage=handleVisualWorkerMessage;
   visualState.worker.onerror=(err)=>{console.error(err);visualState.activeRequestKey=null;hideProcessing();showToast('Error del visor',err.message||'Falló el motor visual.',7000);};
   const copy=state.samples ? state.samples.slice() : new Float32Array();
@@ -1997,7 +2510,7 @@ function handleVisualWorkerMessage(ev){
   if(m.overview){
     visualState.overview=cache;
     renderVisualSpectrogram();requestVisibleVisualTiles(true);hideProcessing();
-    showToast('Visor v45.8 listo','Timeline virtual, zoom profundo y carga predictiva activos.');
+    showToast('Visor multirresolución listo','Timeline virtual, zoom profundo y carga predictiva activos.');
     scheduleBackgroundVisualWarmup();
   }else{
     cache.bytes=cache.db?.byteLength||0;
@@ -2518,7 +3031,7 @@ function drawMatches(ctx) {
     const color=m.color||tpl?.color||'#06b6d4',x1=timeToX(m.tmin),x2=timeToX(m.tmax),y1=freqToY(m.fmax),y2=freqToY(m.fmin);
     const rx=Math.min(x1,x2),ry=Math.min(y1,y2),rw=Math.abs(x2-x1),rh=Math.abs(y2-y1);
     ctx.save();ctx.lineWidth=1.6;ctx.strokeStyle=color;ctx.fillStyle=hexToRgba(color,.055);ctx.fillRect(rx,ry,rw,rh);ctx.strokeRect(rx,ry,rw,rh);ctx.restore();
-    drawAnnotationLabel(ctx,rx,ry,[displayLabelForTemplate(tpl||{})||m.etiqueta||'coincidencia',`score: ${Number(m.score).toFixed(2)}`],color);
+    drawAnnotationLabel(ctx,rx,ry,[displayLabelForTemplate(tpl||{})||m.etiqueta||'coincidencia',`${m.method || (m.methodKey === 'perch2' ? 'Perch2' : 'Búsqueda')} · score: ${Number(m.score).toFixed(2)}`],color);
   }
 }
 
@@ -2587,7 +3100,7 @@ function setRoi(roi, fromFields = false) {
   // Si la plantilla activa ya fue buscada y el usuario dibuja una nueva caja,
   // interpretamos la acción como creación de una plantilla nueva.
   // Esto evita reemplazar accidentalmente una plantilla ya procesada.
-  if (validNow && activeTpl && activeTpl.hasSearched && isTemplateValid(activeTpl) && !sameRoi(clipped, activeTpl)) {
+  if (validNow && activeTpl && (activeTpl.hasSearched || activeTpl.perch2?.hasSearched) && isTemplateValid(activeTpl) && !sameRoi(clipped, activeTpl)) {
     activeTpl = createDraftTemplate();
     createdNewFromSearched = true;
     if (el.roiLabel) el.roiLabel.value = activeTpl.defaultLabel;
@@ -2611,6 +3124,7 @@ function setRoi(roi, fromFields = false) {
     activeTpl.fmin = clipped.fmin;
     activeTpl.fmax = clipped.fmax;
     activeTpl.matches = [];
+    invalidatePerchResults(activeTpl);
     activeTpl.hasSearched = false;
     activeTpl.autoAdjust = true;
     activeTpl.autoAdjustMode = 'balanceado';
@@ -2721,7 +3235,7 @@ function clearMatchesTable() {
   } else if (!state.matches.length) {
     message = 'Sin coincidencias todavía. Busca similares para llenar la tabla.';
   }
-  el.matchesTable.querySelector('tbody').innerHTML = `<tr><td colspan="7" class="muted-cell">${escapeHtml(message)}</td></tr>`;
+  el.matchesTable.querySelector('tbody').innerHTML = `<tr><td colspan="8" class="muted-cell">${escapeHtml(message)}</td></tr>`;
   if (el.resultsFooterSummary) el.resultsFooterSummary.innerHTML = `<span class="ui-icon"><svg viewBox="0 0 24 24"><path d="M8 6h12M8 12h12M8 18h12M4 6h.01M4 12h.01M4 18h.01"/></svg></span><strong>0 coincidencias</strong><span>· ordenado por score</span>`;
 }
 
@@ -2733,6 +3247,7 @@ function sortMatchesForTable(matches) {
     if (key === 'rank') return m._rank;
     if (key === 'etiqueta') return String(m.etiqueta || '').toLowerCase();
     if (key === 'plantilla') return String(m.templateLabel || '').toLowerCase();
+    if (key === 'method') return String(m.method || (m.methodKey === 'perch2' ? 'Perch2' : 'Búsqueda clásica')).toLowerCase();
     return Number(m[key]);
   };
   arr.sort((a, b) => {
@@ -2777,7 +3292,9 @@ function renderMatchesTable() {
     const tr = document.createElement('tr');
     tr.className = 'match-row';
     const labelText = escapeHtml(m.etiqueta || m.templateLabel || '');
-    tr.innerHTML = `<td>${m._rank}</td><td class="label-pill-cell"><span class="label-pill editable-label" contenteditable="true" data-template-id="${escapeHtml(m.templateId || '')}" style="--tpl-color:${m.color || '#00e5ff'}">${labelText}</span></td><td>${m.score.toFixed(3)}</td><td>${m.tmin.toFixed(2)}</td><td>${m.tmax.toFixed(2)}</td><td>${(m.fmin/1000).toFixed(2)}</td><td>${(m.fmax/1000).toFixed(2)}</td>`;
+    const methodText = m.method || (m.methodKey === 'perch2' ? 'Perch2' : 'Búsqueda clásica');
+    const methodClass = m.methodKey === 'perch2' ? 'perch' : 'classic';
+    tr.innerHTML = `<td>${m._rank}</td><td class="label-pill-cell"><span class="label-pill editable-label" contenteditable="true" data-template-id="${escapeHtml(m.templateId || '')}" style="--tpl-color:${m.color || '#00e5ff'}">${labelText}</span></td><td><span class="method-badge ${methodClass}">${escapeHtml(methodText)}</span></td><td>${m.score.toFixed(3)}</td><td>${m.tmin.toFixed(2)}</td><td>${m.tmax.toFixed(2)}</td><td>${(m.fmin/1000).toFixed(2)}</td><td>${(m.fmax/1000).toFixed(2)}</td>`;
     tr.addEventListener('click', (ev) => {
       if (ev.target && ev.target.classList.contains('editable-label')) return;
       el.audioPlayer.currentTime = m.tmin;
@@ -2811,7 +3328,7 @@ function updateTemplateLabel(templateId, newLabel, options = {}) {
   if (!tpl) return;
   const finalLabel = cleanLabel(newLabel || tpl.defaultLabel || displayLabelForTemplate(tpl));
   tpl.etiqueta = finalLabel;
-  for (const m of (tpl.matches || [])) {
+  for (const m of [...(tpl.matches || []), ...(tpl.perchMatches || [])]) {
     m.etiqueta = finalLabel;
     m.templateLabel = finalLabel;
   }
@@ -2833,10 +3350,11 @@ function getExportBaseName() {
 
 function exportCsv() {
   if (!state.matches.length) return;
-  const header = ['audio','plantilla','tmin','tmax','fmin','fmax','etiqueta','score','estado'];
+  const header = ['audio','plantilla','metodo','tmin','tmax','fmin','fmax','etiqueta','score','estado'];
   const rows = state.matches.map(m => [
     state.file?.name || '',
     m.templateLabel || '',
+    m.method || (m.methodKey === 'perch2' ? 'Perch2' : 'Búsqueda clásica'),
     m.tmin.toFixed(6),
     m.tmax.toFixed(6),
     m.fmin.toFixed(3),
@@ -2853,10 +3371,11 @@ function exportCsv() {
 
 function exportXlsx() {
   if (!state.matches.length) return;
-  const header = ['audio','plantilla','tmin','tmax','fmin','fmax','etiqueta','score','estado'];
+  const header = ['audio','plantilla','metodo','tmin','tmax','fmin','fmax','etiqueta','score','estado'];
   const rows = state.matches.map(m => [
     state.file?.name || '',
     m.templateLabel || '',
+    m.method || (m.methodKey === 'perch2' ? 'Perch2' : 'Búsqueda clásica'),
     Number(m.tmin.toFixed(6)),
     Number(m.tmax.toFixed(6)),
     Number(m.fmin.toFixed(3)),
@@ -3056,6 +3575,8 @@ function saveCurrentTemplate({ silent = false } = {}) {
       samples: [],
       previewCache: new Map(),
       matches: [],
+      perchMatches: [],
+      perch2: null,
       hasSearched: false,
     };
     state.templates.push(tpl);
@@ -3091,13 +3612,14 @@ function saveCurrentTemplate({ silent = false } = {}) {
   tpl.fmax = nextGeometry.fmax;
   if (isNew || roiChanged || wasDraft) {
     tpl.matches = [];
+    invalidatePerchResults(tpl);
     tpl.hasSearched = false;
     tpl.autoAdjust = true;
   tpl.autoAdjustMode = 'balanceado';
     tpl.showMatches = true;
   }
   tpl.etiqueta = cleanLabel(currentEtiqueta() || tpl.etiqueta || tpl.defaultLabel);
-  for (const m of (tpl.matches || [])) {
+  for (const m of [...(tpl.matches || []), ...(tpl.perchMatches || [])]) {
     m.etiqueta = tpl.etiqueta;
     m.templateLabel = tpl.etiqueta;
   }
@@ -3183,6 +3705,7 @@ function clearRoi() {
   const tpl = getActiveTemplate();
   if (tpl) {
     tpl.matches = [];
+    invalidatePerchResults(tpl);
     tpl.tmin = 0;
     tpl.tmax = 0;
     tpl.fmin = 0;
@@ -3198,6 +3721,9 @@ function clearRoi() {
   el.roiSummary.textContent = 'Plantilla limpia. Dibuja una nueva caja.';
   if (el.btnSaveRoi) el.btnSaveRoi.disabled = true;
   refreshCombinedMatches();
+  renderTemplateNavigator();
+  applyPerchConfigToUi(tpl);
+  updateSearchButtonsState();
   drawOverlay();
   setStatus('Marca plantilla', 'Arrastra sobre el espectrograma para encerrar el patrón que quieres buscar.');
   setCoach('Marca una plantilla', 'Dibuja una caja sobre el sonido que quieres encontrar.');
@@ -3711,6 +4237,8 @@ function attachEvents() {
   if (el.btnNextTemplate) el.btnNextTemplate.addEventListener('click', () => goTemplate(1));
   if (el.btnPrevSearchTemplate) el.btnPrevSearchTemplate.addEventListener('click', () => goTemplate(-1));
   if (el.btnNextSearchTemplate) el.btnNextSearchTemplate.addEventListener('click', () => goTemplate(1));
+  if (el.btnPrevPerchTemplate) el.btnPrevPerchTemplate.addEventListener('click', () => goTemplate(-1));
+  if (el.btnNextPerchTemplate) el.btnNextPerchTemplate.addEventListener('click', () => goTemplate(1));
   el.btnSearch.addEventListener('click', searchEmbedding);
   el.btnClearMatches.addEventListener('click', clearMatches);
   el.btnExportCsv.addEventListener('click', exportCsv);
@@ -3744,13 +4272,16 @@ function attachEvents() {
       tpl.sampleEstimator = el.sampleEstimator?.value || tpl.sampleEstimator || 'consensus_ncc';
       clearTemplateCompositeCache(tpl);
       tpl.matches = [];
+      invalidatePerchResults(tpl);
       tpl.hasSearched = false;
       tpl.autoAdjust = true;
   tpl.autoAdjustMode = 'balanceado';
     }
     updateSamplePanelState(tpl);
+    applyPerchConfigToUi(tpl);
     renderTemplateNavigator();
     updateSearchButtonsState();
+    refreshCombinedMatches();
     drawOverlay();
   });
   if (el.sampleEstimator) el.sampleEstimator.addEventListener('change', () => {
@@ -3778,6 +4309,42 @@ function attachEvents() {
   });
   if (el.btnAddSample) el.btnAddSample.addEventListener('click', () => addCurrentSampleToActiveTemplate({ silent: false }));
   if (el.btnRemoveSample) el.btnRemoveSample.addEventListener('click', removeLastSampleFromActiveTemplate);
+
+  if (el.perchSignalSegments) {
+    el.perchSignalSegments.querySelectorAll('[data-perch-mode]').forEach(btn => btn.addEventListener('click', () => {
+      const mode = btn.dataset.perchMode || 'full';
+      setPerchModeButtons(mode);
+      syncActiveTemplatePerchParamsFromUi({ invalidateExpensive: true });
+    }));
+  }
+  if (el.perchStride && el.perchStrideInput) {
+    el.perchStride.addEventListener('input', () => { el.perchStrideInput.value = Number(el.perchStride.value).toFixed(2); updatePerchWindowEstimate(); });
+    el.perchStride.addEventListener('change', () => syncActiveTemplatePerchParamsFromUi({ invalidateExpensive: true }));
+    el.perchStrideInput.addEventListener('input', () => { const v=clamp(Number(el.perchStrideInput.value)||0.5,0.25,2); el.perchStride.value=String(v); updatePerchWindowEstimate(); });
+    el.perchStrideInput.addEventListener('change', () => syncActiveTemplatePerchParamsFromUi({ invalidateExpensive: true }));
+  }
+  if (el.perchFminRange) {
+    el.perchFminRange.addEventListener('input', () => updatePerchDualRangeVisual('min'));
+    el.perchFminRange.addEventListener('change', () => syncActiveTemplatePerchParamsFromUi({ invalidateExpensive: true }));
+  }
+  if (el.perchFmaxRange) {
+    el.perchFmaxRange.addEventListener('input', () => updatePerchDualRangeVisual('max'));
+    el.perchFmaxRange.addEventListener('change', () => syncActiveTemplatePerchParamsFromUi({ invalidateExpensive: true }));
+  }
+  if (el.perchFminInput) el.perchFminInput.addEventListener('change', () => { syncPerchBandHandlesFromInputs('min'); syncActiveTemplatePerchParamsFromUi({ invalidateExpensive: true }); });
+  if (el.perchFmaxInput) el.perchFmaxInput.addEventListener('change', () => { syncPerchBandHandlesFromInputs('max'); syncActiveTemplatePerchParamsFromUi({ invalidateExpensive: true }); });
+  if (el.perchScore && el.perchScoreInput) {
+    el.perchScore.addEventListener('input', () => { el.perchScoreInput.value = Number(el.perchScore.value).toFixed(2); syncActiveTemplatePerchParamsFromUi({ refreshFilters: true }); });
+    el.perchScoreInput.addEventListener('input', () => { const v=clamp(Number(el.perchScoreInput.value)||0,-1,1); el.perchScore.value=String(v); syncActiveTemplatePerchParamsFromUi({ refreshFilters: true }); });
+  }
+  if (el.perchIou && el.perchIouInput) {
+    el.perchIou.addEventListener('input', () => { el.perchIouInput.value = Number(el.perchIou.value).toFixed(2); syncActiveTemplatePerchParamsFromUi({ refreshFilters: true }); });
+    el.perchIouInput.addEventListener('input', () => { const v=clamp(Number(el.perchIouInput.value)||0,0,1); el.perchIou.value=String(v); syncActiveTemplatePerchParamsFromUi({ refreshFilters: true }); });
+  }
+  if (el.perchExcludeTemplate) el.perchExcludeTemplate.addEventListener('change', () => syncActiveTemplatePerchParamsFromUi({ refreshFilters: true }));
+  if (el.btnSearchPerch) el.btnSearchPerch.addEventListener('click', startPerchSearch);
+  if (el.btnCancelPerch) el.btnCancelPerch.addEventListener('click', cancelPerchSearch);
+
   el.accordionPanels.forEach(panel => {
     const head = panel.querySelector('.accordion-head');
     if (head) head.addEventListener('click', () => togglePanel(panel.dataset.panel));
@@ -3790,7 +4357,7 @@ function attachEvents() {
         state.tableSort.dir = state.tableSort.dir === 'asc' ? 'desc' : 'asc';
       } else {
         state.tableSort.key = key;
-        state.tableSort.dir = key === 'etiqueta' ? 'asc' : 'desc';
+        state.tableSort.dir = (key === 'etiqueta' || key === 'method') ? 'asc' : 'desc';
       }
       renderMatchesTable();
     });
@@ -3813,6 +4380,10 @@ function attachEvents() {
     if (node) node.addEventListener('change', syncActiveTemplateParamsFromUi);
   });
   updateManualSearchControlState();
+  setPerchModeButtons('full');
+  updatePerchDualRangeVisual();
+  updatePerchWindowEstimate();
+  updatePerchButtonsState();
   window.addEventListener('keydown',(ev)=>{const tag=(ev.target&&ev.target.tagName||'').toLowerCase();if(['input','select','textarea','button'].includes(tag))return;if(ev.key==='+'||ev.key==='='){ev.preventDefault();setVisualZoom(visualState.pxPerSec*1.25,el.audioPlayer.currentTime||null);}else if(ev.key==='-'||ev.key==='_'){ev.preventDefault();setVisualZoom(visualState.pxPerSec/1.25,el.audioPlayer.currentTime||null);}else if(ev.key==='0'){ev.preventDefault();fitVisualAll();}else if(ev.key.toLowerCase()==='z'){ev.preventDefault();el.zoomSelection.checked=!el.zoomSelection.checked;el.spectrogramViewport.classList.toggle('zoom-select-on',el.zoomSelection.checked);}else if(ev.key==='Escape'){el.zoomSelection.checked=false;el.spectrogramViewport.classList.remove('zoom-select-on');hideZoomRectCanvas();}else if(ev.key===' '){ev.preventDefault();el.audioPlayer.paused?el.audioPlayer.play():el.audioPlayer.pause();}else if(ev.key==='ArrowLeft'){ev.preventDefault();el.audioPlayer.currentTime=clamp((el.audioPlayer.currentTime||0)-1,0,state.duration);updatePlayhead(true);}else if(ev.key==='ArrowRight'){ev.preventDefault();el.audioPlayer.currentTime=clamp((el.audioPlayer.currentTime||0)+1,0,state.duration);updatePlayhead(true);}});
   window.addEventListener('resize',()=>{if(!state.display)return;const start=visualViewStartTime();if(visualState.autoHeight)syncAutoVisualHeight(true);syncVisualZoomUi();layoutSpectrogramStage(true);setVisualViewStartTime(start);drawAxes();drawOverlay();renderVisualSpectrogram();requestVisibleVisualTiles(true);});
 }

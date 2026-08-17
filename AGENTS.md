@@ -7,7 +7,7 @@ Un cambio **no se considera terminado** hasta cumplir la sección **Definition o
 ## 1. Identidad del proyecto
 
 - Proyecto: **Bioacoustic Template Labeler**.
-- Versión estable de referencia de este documento: **v45.8.4**.
+- Versión estable de referencia de este documento: **v46**.
 - Tipo: aplicación web estática/local.
 - Objetivo: seleccionar plantillas acústicas sobre espectrogramas, buscar patrones similares, revisar coincidencias y exportar resultados.
 - Filosofía: procesamiento local, arquitectura explícita, comportamiento reproducible y fundamento matemático documentado.
@@ -37,6 +37,9 @@ index.html
           │
           ├── audio-worker.js
           │      └── análisis, plantillas, búsqueda y scores
+          │
+          ├── perch-worker.js
+          │      └── Perch2 ONNX local, embeddings y barrido temporal
           │
           ├── visual-worker.js
           │      └── STFT visual, overview y teselas
@@ -122,13 +125,25 @@ Estas reglas no deben romperse salvo decisión explícita del responsable del pr
 19. La vista previa debe representar la plantilla efectiva y respetar su proporción temporal/frecuencial.
 20. En modo multimuestra, la vista previa debe representar el soporte/plantilla compuesta, no limitarse a la primera muestra.
 
-### 4.5 Responsive y UX
+### 4.5 Búsqueda Perch2
 
-21. La interfaz debe funcionar correctamente en escritorio al **100 % de zoom del navegador**.
-22. El panel derecho debe continuar siendo redimensionable y sus controles deben reorganizarse de forma responsive.
-23. Evitar scrolls globales redundantes; usar scroll únicamente donde tenga función real.
-24. Un cambio exclusivamente de estilo debe ser lo más localizado posible.
-25. No reescribir componentes estables si una corrección quirúrgica resuelve el problema.
+21. Perch2 es un **segundo motor analítico**; no sustituye ni modifica la búsqueda clásica de `audio-worker.js`.
+22. La inferencia Perch2 debe ejecutarse localmente en el navegador mediante `perch-worker.js`; no introducir un servidor CPU/GPU como requisito.
+23. La plantilla activa alimenta ambos motores, pero Perch2 usa una referencia simple: si la plantilla es multimuestra se usa **exclusivamente `samples[0]`**.
+24. La configuración Perch2 pertenece a cada plantilla y debe persistir independientemente al navegar entre plantillas.
+25. `Audio completo` es el modo Perch2 predeterminado. `Banda de frecuencias` es una configuración analítica opcional y manual; `Comparar` calcula ambos caminos.
+26. El control dual `fmin/fmax` usa coordenada Mel solo para mejorar la interacción. Antes del filtrado, sus posiciones deben convertirse de nuevo a Hz; no confundir esta escala UX con la escala visual del espectrograma.
+27. Cambiar plantilla, muestras, geometría, modo de señal, banda o paso temporal invalida candidatos Perch2. Cambiar score coseno, IoU o exclusión de plantilla solo refiltra candidatos existentes y **no debe recalcular embeddings**.
+28. Los resultados clásicos y Perch2 se conservan por separado dentro de la plantilla y se combinan únicamente para visualización/exportación en `Resultados`.
+29. El coseno Perch2 debe conservar su dominio matemático real `[-1,1]` y la supresión de redundancia temporal debe usar IoU/NMS.
+
+### 4.6 Responsive y UX
+
+30. La interfaz debe funcionar correctamente en escritorio al **100 % de zoom del navegador**.
+31. El panel derecho debe continuar siendo redimensionable y sus controles deben reorganizarse de forma responsive.
+32. Evitar scrolls globales redundantes; usar scroll únicamente donde tenga función real.
+33. Un cambio exclusivamente de estilo debe ser lo más localizado posible.
+34. No reescribir componentes estables si una corrección quirúrgica resuelve el problema.
 
 ## 5. Política de cambios
 
@@ -315,6 +330,18 @@ Ejecutar lo que aplique al alcance. Para cambios de arquitectura o entregas gran
 - [ ] Repetir búsqueda sin crear plantilla nueva.
 - [ ] Verificar cajas y tabla.
 
+### Búsqueda Perch2
+
+- [ ] Confirmar `Audio completo` como modo predeterminado.
+- [ ] Activar `Banda de frecuencias` y comprobar que se despliega el panel `fmin/fmax`.
+- [ ] Comprobar que la barra dual usa Mel para interacción y devuelve Hz correctos.
+- [ ] En multimuestra, comprobar que la referencia usada es la primera muestra (#1).
+- [ ] Ejecutar Perch2 con WebGPU cuando esté disponible y verificar fallback WASM.
+- [ ] Verificar progreso y cancelación.
+- [ ] Cambiar score e IoU después de buscar y confirmar que no se recalculan embeddings.
+- [ ] Confirmar que `Resultados` combina búsqueda clásica y Perch2 con columna método.
+- [ ] Cambiar de plantilla y volver: la configuración Perch2 debe conservarse por plantilla.
+
 ### Exportaciones
 
 - [ ] CSV.
@@ -336,6 +363,7 @@ Ejecutar como mínimo:
 ```bash
 node --check src/app.js
 node --check src/audio-worker.js
+node --check src/perch-worker.js
 node --check src/visual-worker.js
 node --check src/colormaps.js
 ```

@@ -2,6 +2,30 @@
 
 Historial canónico de versiones de **Bioacoustic Template Labeler**.
 
+## v46 — 2026-08-16
+
+### Added
+- Nuevo acordeón **Búsqueda Perch2** inmediatamente debajo de la búsqueda clásica.
+- Perch2 ONNX headless ejecutado localmente en `perch-worker.js`, con WebGPU y fallback WASM.
+- Configuración Perch2 independiente por plantilla.
+- Modos **Audio completo** (predeterminado), **Banda de frecuencias** y **Comparar**.
+- Configuración avanzada manual `fmin`/`fmax` mediante barra de dos puntos en escala Mel.
+- Barrido temporal configurable, coseno real `[-1,1]`, IoU/NMS y exclusión de ventanas que solapan la plantilla.
+- Progreso, cancelación y estado del backend local.
+- Columna **método** en Resultados para distinguir búsqueda clásica y Perch2.
+
+### Changed
+- La misma plantilla activa alimenta ambos motores de búsqueda y Resultados reúne las coincidencias de ambos.
+- En plantillas multi-muestra, Perch2 usa exclusivamente la primera muestra (#1); el motor clásico conserva la plantilla compuesta.
+- Score e IoU de Perch2 actúan como filtros interactivos sobre candidatos ya calculados y no vuelven a ejecutar el modelo.
+- CSV y XLSX incluyen el método que originó cada coincidencia.
+
+### Preserved
+- Motor clásico de `audio-worker.js`, semántica multimuestra, visor multirresolución, timeline virtual, zoom, reproducción y exportación TXT Audacity.
+
+### Documentation
+- README, documentación técnica y AGENTS actualizados para la nueva arquitectura Perch2.
+
 ## v45.8.4 — 2026-08-16
 
 ### Changed

@@ -3,8 +3,8 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Etiquetador bioacústico por plantillas v45.8.4</title>
-  <link rel="stylesheet" href="styles.css?v=45.8.4" />
+  <title>Etiquetador bioacústico por plantillas v46</title>
+  <link rel="stylesheet" href="styles.css?v=46" />
 </head>
 <body>
   <div id="appShell" class="app-shell">
@@ -12,8 +12,8 @@
       <div class="brand">
         <img class="brand-logo" src="https://jocotoco.org.ec/dct/tmp_adjuntos/noEn/000/073/MatrizDatos_1757014841Logo-jocotoco2025.svg" alt="Logo Jocotoco" />
         <div>
-          <h1>Etiquetador bioacústico por plantillas <span class="version-tag">v45.8.4</span></h1>
-          <p class="brand-subtitle">Plantillas acústicas + búsqueda por similitud + visor multirresolución</p>
+          <h1>Etiquetador bioacústico por plantillas <span class="version-tag">v46</span></h1>
+          <p class="brand-subtitle">Plantillas acústicas + búsqueda clásica/Perch2 + visor multirresolución</p>
         </div>
       </div>
       <div class="top-actions">
@@ -275,6 +275,77 @@
           </div>
         </section>
 
+
+
+        <section class="panel-card accordion-panel is-collapsed" data-panel="perch-search">
+          <button class="accordion-head" type="button" aria-expanded="false">
+            <span class="section-title"><span class="section-icon icon-perch" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M9 4a3 3 0 0 0-5 2.2A3.4 3.4 0 0 0 4.4 12 3.5 3.5 0 0 0 8 17.8V20M15 4a3 3 0 0 1 5 2.2A3.4 3.4 0 0 1 19.6 12 3.5 3.5 0 0 1 16 17.8V20M9 4v16M15 4v16M9 8h2M13 8h2M9 12h2M13 12h2M9 16h2M13 16h2"/><circle cx="12" cy="8" r="1"/><circle cx="12" cy="12" r="1"/><circle cx="12" cy="16" r="1"/></svg></span>Búsqueda Perch2</span>
+            <span class="accordion-icon">▾</span>
+          </button>
+          <div class="accordion-content perch-content">
+            <div class="search-chip-nav"><button id="btnPrevPerchTemplate" class="carousel-btn" type="button" aria-label="Plantilla anterior">‹</button><div id="perchTemplateChips" class="template-chips search-template-chips" aria-label="Plantillas para búsqueda Perch2"></div><button id="btnNextPerchTemplate" class="carousel-btn" type="button" aria-label="Plantilla siguiente">›</button></div>
+            <div id="perchTemplatePager" class="template-pager">Sin plantillas</div>
+
+            <div class="perch-template-card">
+              <div class="perch-card-title"><span class="perch-mini-icon"><svg viewBox="0 0 24 24"><path d="M6 3h9l4 4v14H6zM15 3v5h5"/></svg></span>Plantilla activa</div>
+              <div class="perch-template-facts">
+                <span id="perchTplMode" class="perch-fact">Modo: —</span>
+                <span id="perchTplSample" class="perch-fact">Muestra Perch2: —</span>
+                <span id="perchTplTime" class="perch-fact">Tiempo: —</span>
+                <span id="perchTplFreq" class="perch-fact">Frecuencia: —</span>
+              </div>
+              <div id="perchMultiWarning" class="perch-warning is-hidden"><span class="perch-warning-icon">!</span><span>Perch2 solo utiliza plantilla simple. Si la plantilla es multi-muestra, se usa únicamente la primera muestra.</span></div>
+            </div>
+
+            <div class="perch-two-col">
+              <div class="perch-control-card">
+                <div class="perch-card-title"><span class="perch-mini-icon"><svg viewBox="0 0 24 24"><path d="M3 12h2l1.5-5 2 10 2-13 2 16 2-11 2 7 1.5-4H21"/></svg></span>Señal para Perch2</div>
+                <input id="perchSignalMode" type="hidden" value="full" />
+                <div id="perchSignalSegments" class="perch-segments" role="radiogroup" aria-label="Señal para Perch2">
+                  <button type="button" class="active" data-perch-mode="full">Audio completo</button>
+                  <button type="button" data-perch-mode="band">Banda de frecuencias</button>
+                  <button type="button" data-perch-mode="compare">Comparar</button>
+                </div>
+                <div id="perchBandPanel" class="perch-band-panel is-hidden">
+                  <div class="perch-advanced-head"><span>Configuración avanzada · Banda de frecuencias</span><span aria-hidden="true">⌄</span></div>
+                  <div class="perch-range-label-row"><strong>Rango de frecuencias</strong><span id="perchBandRangeText">—</span></div>
+                  <div class="perch-dual-range" id="perchDualRange">
+                    <div class="perch-range-track"></div><div id="perchRangeFill" class="perch-range-fill"></div>
+                    <input id="perchFminRange" class="perch-range perch-range-min" type="range" min="0" max="1000" step="1" value="0" aria-label="Frecuencia mínima" />
+                    <input id="perchFmaxRange" class="perch-range perch-range-max" type="range" min="0" max="1000" step="1" value="1000" aria-label="Frecuencia máxima" />
+                  </div>
+                  <div class="perch-range-extremes"><span id="perchRangeMinLabel">0.00 kHz</span><span class="perch-mel-note">escala Mel</span><span id="perchRangeMaxLabel">— kHz</span></div>
+                  <div class="perch-band-inputs">
+                    <label>fmin <span><input id="perchFminInput" type="number" min="0" step="0.01" value="0" /> kHz</span></label>
+                    <label>fmax <span><input id="perchFmaxInput" type="number" min="0" step="0.01" value="8" /> kHz</span></label>
+                  </div>
+                  <p class="perch-help">Opcional: filtra la señal antes de calcular el embedding. La barra usa escala Mel para dar más precisión de ajuste en frecuencias bajas.</p>
+                </div>
+              </div>
+
+              <div class="perch-control-card">
+                <div class="perch-card-title"><span class="perch-mini-icon"><svg viewBox="0 0 24 24"><path d="M3 12h18M7 8l-4 4 4 4M17 8l4 4-4 4"/></svg></span>Barrido temporal</div>
+                <label class="control-label"><span class="label-row">Paso temporal <button type="button" class="info-dot" data-tip="Cada cuántos segundos se inicia una nueva ventana Perch2 de 5 s. Menor paso = búsqueda más fina y más lenta.">i</button></span><div class="slider-number-row"><input id="perchStride" type="range" min="0.25" max="2.00" step="0.25" value="0.50" /><input id="perchStrideInput" class="number-compact" type="number" min="0.25" max="2.00" step="0.25" value="0.50" /></div></label>
+                <div class="perch-info-strip"><span>Contexto Perch2: <strong>5.0 s</strong></span><span>Ventanas estimadas: <strong id="perchWindowEstimate">0</strong></span></div>
+              </div>
+            </div>
+
+            <div class="perch-control-card perch-match-card">
+              <div class="perch-card-title"><span class="perch-mini-icon"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="7"/><circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3"/></svg></span>Coincidencia <span id="perchLocalBadge" class="perch-local-badge">LOCAL</span></div>
+              <label class="control-label"><span class="label-row">Similitud coseno <button type="button" class="info-dot" data-tip="Coseno real entre embeddings Perch2, de −1 a 1. Cambiarlo después de buscar no recalcula embeddings.">i</button></span><div class="slider-number-row"><input id="perchScore" type="range" min="-1" max="1" step="0.01" value="0.70" /><input id="perchScoreInput" class="number-compact" type="number" min="-1" max="1" step="0.01" value="0.70" /></div></label>
+              <label class="control-label"><span class="label-row">Solape máximo (IoU) <button type="button" class="info-dot" data-tip="NMS temporal: se conserva primero la ventana de mayor score y se suprimen ventanas con IoU superior a este valor.">i</button></span><div class="slider-number-row"><input id="perchIou" type="range" min="0" max="1" step="0.05" value="0.30" /><input id="perchIouInput" class="number-compact" type="number" min="0" max="1" step="0.05" value="0.30" /></div></label>
+              <label class="checkline perch-exclude"><input id="perchExcludeTemplate" type="checkbox" checked />Excluir ventanas que solapen la plantilla</label>
+            </div>
+
+            <div id="perchProgressWrap" class="perch-progress-wrap">
+              <div class="perch-progress-row"><span id="perchModelStatus">Modelo pendiente · se cargará al buscar</span><strong id="perchProgressPct">0%</strong></div>
+              <div class="perch-progress-track"><div id="perchProgressBar" class="perch-progress-bar"></div></div>
+            </div>
+            <div class="perch-actions"><button id="btnSearchPerch" class="btn btn-primary" disabled><span class="ui-icon"><svg viewBox="0 0 24 24"><circle cx="10.5" cy="10.5" r="6.5"/><path d="m15.5 15.5 5 5"/></svg></span>Buscar con Perch2</button><button id="btnCancelPerch" class="btn btn-ghost" disabled><span class="ui-icon"><svg viewBox="0 0 24 24"><rect x="6" y="6" width="12" height="12" rx="1"/></svg></span>Cancelar</button></div>
+            <div id="perchSummary" class="search-status-card">Selecciona una plantilla para buscar con Perch2.</div>
+          </div>
+        </section>
+
         <section class="panel-card results-card accordion-panel is-collapsed" data-panel="results">
           <button class="accordion-head" type="button" aria-expanded="false">
             <span class="section-title"><span class="section-icon icon-results" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M5 5h14v14H5zM5 10h14M10 5v14"/></svg></span>Resultados</span>
@@ -282,7 +353,7 @@
           </button>
           <div class="accordion-content results-content">
             <div class="results-actions export-actions export-actions-top"><button id="btnExportCsv" class="btn btn-small" disabled><span class="ui-icon export-csv"><svg viewBox="0 0 24 24"><path d="M6 3h9l4 4v14H6zM15 3v5h5M9 13h6M9 17h6"/></svg></span>Exportar CSV</button><button id="btnExportXlsx" class="btn btn-small" disabled><span class="export-x-icon">X</span>Exportar XLSX</button><button id="btnExportTxt" class="btn btn-small" disabled><span class="ui-icon export-txt"><svg viewBox="0 0 24 24"><path d="M6 3h8l4 4v14H6z"/><path d="M14 3v5h5"/><path d="M8.5 12h7M8.5 15h7M8.5 18h5"/></svg></span>Exportar TXT Audacity</button></div>
-            <div class="table-wrap"><table id="matchesTable"><thead><tr><th class="sortable" data-sort="rank">#</th><th class="sortable" data-sort="etiqueta">etiqueta</th><th class="sortable" data-sort="score">score</th><th class="sortable" data-sort="tmin">tmin (s)</th><th class="sortable" data-sort="tmax">tmax (s)</th><th class="sortable" data-sort="fmin">fmin (kHz)</th><th class="sortable" data-sort="fmax">fmax (kHz)</th></tr></thead><tbody><tr><td colspan="7" class="muted-cell">Sin resultados</td></tr></tbody></table></div>
+            <div class="table-wrap"><table id="matchesTable"><thead><tr><th class="sortable" data-sort="rank">#</th><th class="sortable" data-sort="etiqueta">etiqueta</th><th class="sortable" data-sort="method">método</th><th class="sortable" data-sort="score">score</th><th class="sortable" data-sort="tmin">tmin (s)</th><th class="sortable" data-sort="tmax">tmax (s)</th><th class="sortable" data-sort="fmin">fmin (kHz)</th><th class="sortable" data-sort="fmax">fmax (kHz)</th></tr></thead><tbody><tr><td colspan="8" class="muted-cell">Sin resultados</td></tr></tbody></table></div>
             <div id="resultsFooterSummary" class="results-footer-summary"><span class="ui-icon"><svg viewBox="0 0 24 24"><path d="M8 6h12M8 12h12M8 18h12M4 6h.01M4 12h.01M4 18h.01"/></svg></span><strong>0 coincidencias</strong><span>· ordenado por score</span></div>
           </div>
         </section>
@@ -318,7 +389,7 @@
 
   <input id="fileInput" type="file" accept=".wav,.mp3,.flac,.ogg,.m4a,audio/*" hidden />
 
-  <script src="src/colormaps.js?v=45.8.4"></script>
-  <script src="src/app.js?v=45.8.4"></script>
+  <script src="src/colormaps.js?v=46"></script>
+  <script src="src/app.js?v=46"></script>
 </body>
 </html>
