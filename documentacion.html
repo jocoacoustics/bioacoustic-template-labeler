@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Documentación v46 · Bioacoustic Template Labeler</title>
+  <title>Documentación v48.2 · Bioacoustic Template Labeler</title>
   <style>
     :root {
       --bg: #ffffff;
@@ -126,7 +126,7 @@
     <aside>
       <div class="logo">
         <img src="https://jocotoco.org.ec/dct/tmp_adjuntos/noEn/000/073/MatrizDatos_1757014841Logo-jocotoco2025.svg" alt="Logo Jocotoco">
-        <div><strong>Documentación</strong><span>Bioacoustic Template Labeler · v46</span></div>
+        <div><strong>Documentación</strong><span>Bioacoustic Template Labeler · v48.2</span></div>
       </div>
 
       <div class="doc-search">
@@ -189,14 +189,14 @@
           <li>Pulsa <strong>Buscar coincidencias</strong>.</li>
           <li>Revisa cajas y tabla; exporta CSV, XLSX o TXT Audacity.</li>
         </ol>
-        <div class="note"><strong>v46:</strong> la plantilla activa puede alimentar dos motores independientes: la búsqueda clásica y Perch2 ONNX local. Ambos depositan sus coincidencias en el mismo panel Resultados. La vista previa continúa apareciendo solo cuando existe una ROI válida.</div>
+        <div class="note"><strong>v48.2:</strong> la plantilla activa puede alimentar dos motores independientes: la búsqueda clásica y Perch2 ONNX local. Ambos depositan sus coincidencias en el mismo panel Resultados. La vista previa continúa apareciendo solo cuando existe una ROI válida.</div>
       </section>
 
       <section id="ejecutar" data-search="python conda node http server github pages cache localhost">
         <h2>Ejecutar localmente</h2>
         <p>No abras el proyecto como <code>file:///...</code>. Los Web Workers y ciertos recursos pueden quedar restringidos. Usa un servidor HTTP local.</p>
         <h3>Python / Conda</h3>
-        <pre><code>cd bioacoustic-template-labeler-wizard-v46
+        <pre><code>cd bioacoustic-template-labeler-wizard-v48.2
 python -m http.server 8000</code></pre>
         <p>Abre:</p>
         <pre><code>http://localhost:8000</code></pre>
@@ -248,7 +248,7 @@ Tabla + cajas + exportación</div>
           <li><strong>Selección:</strong> arrastra sobre el espectrograma para definir la ROI.</li>
           <li><strong>Plantilla:</strong> asigna etiqueta, ajusta límites o agrega múltiples muestras del mismo fonotipo.</li>
           <li><strong>Búsqueda clásica:</strong> selecciona métrica y perfil de autoajuste.</li>
-          <li><strong>Búsqueda Perch2:</strong> opcionalmente calcula embeddings localmente con Audio completo, Banda de frecuencias o Comparar.</li>
+          <li><strong>Búsqueda Perch2:</strong> opcionalmente calcula embeddings localmente con Automático, Audio completo o Banda de frecuencias.</li>
           <li><strong>Revisión:</strong> inspecciona las cajas y la tabla ordenada por score.</li>
           <li><strong>Exportación:</strong> guarda los resultados para análisis posterior o Audacity.</li>
         </ol>
@@ -296,7 +296,7 @@ Tabla + cajas + exportación</div>
         <h2>Plantillas</h2>
         <p>Una plantilla está definida por una ROI:</p>
         <p>$$R=[t_{\min},t_{\max}]\times[f_{\min},f_{\max}]$$</p>
-        <p>Los campos temporales se expresan en segundos y los campos de frecuencia en kHz en la interfaz.</p>
+        <p>Los campos temporales se expresan en segundos y los campos de frecuencia en kHz en la interfaz. Toda frecuencia visible en kHz se presenta con <strong>tres decimales</strong>; los nombres de UX son <strong>Frecuencia mínima</strong> y <strong>Frecuencia máxima</strong>.</p>
         <h3>Vista previa</h3>
         <p>La vista previa aparece únicamente después de marcar o seleccionar una plantilla válida. Antes de eso, el espacio se dedica completamente a los campos de definición.</p>
         <p>El preview preserva la proporción geométrica de la selección y usa tiempo relativo: el eje temporal representa desde el inicio de la plantilla hasta su duración, no el tiempo absoluto del audio.</p>
@@ -333,8 +333,8 @@ Tabla + cajas + exportación</div>
           <li>Correlación cruzada 2D.</li>
           <li>Correlación 2D multi-escala.</li>
         </ul>
-        <h3>Score mínimo</h3>
-        <p>Todos los métodos se llevan a una interfaz de score entre 0 y 1. Un valor alto es más estricto; uno bajo aumenta sensibilidad y falsos positivos potenciales.</p>
+        <h3>Score mínimo interactivo</h3>
+        <p>Todos los métodos se llevan a una interfaz de score entre 0 y 1. v47 conserva el pool de picos/candidatos calculados antes del umbral final; por ello, una vez terminada la búsqueda, mover <strong>Score mínimo</strong> refiltra y redibuja cajas/Resultados sin volver a ejecutar el worker. Cambiar el método o la separación entre ventanas sí cambia el análisis y requiere nueva búsqueda.</p>
         <h3>Separación entre ventanas</h3>
         <p>Controla la densidad con la que se prueban ventanas candidatas. En auto, el paso temporal se deriva de la duración de plantilla y se limita para conservar sensibilidad en eventos cortos.</p>
         <h3>Autoajuste</h3>
@@ -349,9 +349,9 @@ Tabla + cajas + exportación</div>
         </table>
       </section>
 
-      <section id="perch2" data-search="perch2 onnx webgpu wasm embedding 1536 audio completo banda frecuencias mel fmin fmax coseno iou nms 5 segundos 32 khz">
+      <section id="perch2" data-search="perch2 onnx webgpu wasm embedding 1536 automatico audio completo banda frecuencias mel coseno perfil temporal picos valles encajado">
         <h2>Búsqueda Perch2</h2>
-        <p>v46 incorpora Perch2 como un <strong>segundo motor de búsqueda</strong>. Usa la misma plantilla activa que la búsqueda clásica, pero calcula representaciones latentes mediante Perch2 ONNX directamente en el navegador.</p>
+        <p>v48.2 mantiene Perch2 como un <strong>segundo motor de búsqueda local</strong>. Usa la plantilla activa como referencia, calcula embeddings Perch2 ONNX en el navegador y conserva el perfil completo de similitud para poder ajustar resultados sin repetir inferencia.</p>
 
         <div class="flow">Plantilla activa
    ├── Búsqueda clásica → audio-worker.js
@@ -359,37 +359,39 @@ Tabla + cajas + exportación</div>
                            ↓
                     embedding 1536-D
                            ↓
-                    coseno + IoU/NMS
+                  perfil temporal de coseno
+                     ├── picos / valles
+                     └── encajado temporal
+                           ↓
+                        eventos
 
 ambos motores → Resultados</div>
 
         <h3>Referencia simple y multimuestra</h3>
-        <p>Perch2 trabaja con una referencia simple. Para una plantilla simple usa su ROI. Para una plantilla multi-muestra usa estrictamente:</p>
+        <p>Perch2 siempre usa una referencia simple. Para una plantilla simple usa su ROI. Para una plantilla multi-muestra usa estrictamente:</p>
         <p>$$R_{Perch2}=R_1$$</p>
-        <p>donde $R_1$ es la <strong>primera muestra almacenada</strong> de la plantilla. Los estimadores de consenso/medoide/mediana/promedio pertenecen únicamente al motor clásico.</p>
+        <p>donde $R_1$ es la <strong>primera muestra almacenada</strong>. Esta misma referencia determina el rango de frecuencias del modo Automático.</p>
 
         <h3>Señal para Perch2</h3>
         <table>
           <thead><tr><th>Modo</th><th>Comportamiento</th></tr></thead>
           <tbody>
-            <tr><td>Audio completo</td><td><strong>Predeterminado.</strong> La ventana de 5 s se entrega a Perch2 sin filtro frecuencial previo.</td></tr>
-            <tr><td>Banda de frecuencias</td><td>Aplica un filtro pasa-banda real a la forma de onda usando el rango manual $[f_{min},f_{max}]$ antes del embedding.</td></tr>
-            <tr><td>Comparar</td><td>Calcula ambos caminos (audio completo y banda) y conserva para cada candidato el mayor coseno, indicando el origen.</td></tr>
+            <tr><td>Automático</td><td><strong>Predeterminado.</strong> Usa exactamente $[f_{min},f_{max}]$ de la ROI de referencia de Perch2 y filtra la forma de onda antes del embedding. No requiere configurar la banda a mano.</td></tr>
+            <tr><td>Audio completo</td><td>Entrega la ventana de 5 s a Perch2 sin filtro frecuencial previo.</td></tr>
+            <tr><td>Banda de frecuencias</td><td>Aplica un rango manual definido por Frecuencia mínima y Frecuencia máxima antes del embedding.</td></tr>
           </tbody>
         </table>
+        <p>En <strong>Automático</strong>, si la plantilla es multimuestra, la banda proviene de la muestra #1 porque esa es la misma referencia usada para el embedding. En <strong>Audio completo</strong>, Perch2 aporta localización temporal pero no una banda frecuencial específica; Resultados y exportaciones lo distinguen explícitamente.</p>
 
-        <h3>Configuración avanzada de banda: barra dual en Mel</h3>
-        <p>El control de dos puntos para $f_{min}$ y $f_{max}$ usa una coordenada Mel <strong>solo para interacción</strong>. Esto reparte más espacio de la barra en frecuencias bajas y permite ajustar manualmente sus límites con mayor precisión.</p>
-        <p>La conversión usada por el control es:</p>
+        <h3>Configuración manual de banda: barra dual en Mel</h3>
+        <p>El panel manual aparece solo al seleccionar <strong>Banda de frecuencias</strong>. El control de dos puntos usa una coordenada Mel únicamente para interacción:</p>
         <p>$$m(f)=2595\log_{10}\left(1+\frac{f}{700}\right)$$</p>
         <p>y la inversa:</p>
         <p>$$f(m)=700\left(10^{m/2595}-1\right)$$</p>
-        <p>La posición del slider se convierte inmediatamente de vuelta a <strong>Hz</strong>. El filtro analítico nunca recibe unidades Mel. El máximo del control es el menor entre Nyquist del audio y 16 kHz, porque Perch2 opera a 32 kHz.</p>
+        <p>Antes del filtrado, las posiciones vuelven a Hz. Toda frecuencia visible en kHz usa exactamente tres decimales.</p>
 
         <h3>Filtro de banda</h3>
-        <p>Cuando la banda participa, <code>perch-worker.js</code> filtra la forma de onda antes del remuestreo a 32 kHz mediante secciones biquad Butterworth en cascada. Cada sección sigue la recurrencia:</p>
-        <p>$$y[n]=b_0x[n]+b_1x[n-1]+b_2x[n-2]-a_1y[n-1]-a_2y[n-2]$$</p>
-        <p>Se aplican etapas pasa-altos en $f_{min}$ y pasa-bajos en $f_{max}$, y la cascada se ejecuta hacia adelante y hacia atrás para cancelar aproximadamente la fase, de forma análoga a un filtrado <em>zero-phase</em>. Esta transformación pertenece al motor analítico Perch2 y no modifica el espectrograma visual.</p>
+        <p>Automático y Banda de frecuencias filtran la forma de onda antes del remuestreo a 32 kHz mediante secciones biquad Butterworth en cascada. Se aplican etapas pasa-altos en $f_{min}$ y pasa-bajos en $f_{max}$, hacia adelante y hacia atrás para cancelar aproximadamente la fase. El filtrado pertenece al motor analítico y no altera el espectrograma visual.</p>
 
         <h3>Preprocesamiento Perch2</h3>
         <ul>
@@ -399,39 +401,60 @@ ambos motores → Resultados</div>
           <li>Normalización de pico: <strong>0.25</strong>.</li>
           <li>Embedding: <strong>1536 dimensiones</strong>.</li>
         </ul>
-        <p>Si la ROI dura menos de 5 s, el contexto se centra alrededor de la selección. Si dura más de 5 s, se generan varios contextos de 5 s; sus embeddings normalizados se promedian y se vuelve a normalizar el prototipo.</p>
+        <p>Si la ROI dura menos de 5 s, el contexto se centra alrededor de la selección. Si dura más, varios contextos de 5 s forman un prototipo mediante promedio de embeddings normalizados.</p>
 
-        <h3>Coseno real</h3>
+        <h3>Coseno real y perfil temporal</h3>
         <p>Los embeddings se normalizan en norma $L_2$. La similitud conserva el dominio matemático real $[-1,1]$:</p>
         <p>$$s_i=\frac{e_T^\top e_i}{\lVert e_T\rVert_2\,\lVert e_i\rVert_2}$$</p>
-        <p>Con embeddings ya normalizados, el cálculo se reduce al producto punto $s_i=e_T^\top e_i$.</p>
+        <p>Cada ventana desplazada produce un punto $(c_i,s_i)$, donde $c_i$ es el centro temporal. v48.2 interpreta estos puntos como un <strong>perfil temporal de coseno</strong>. El Score mínimo $\tau$ define qué zonas del perfil son candidatas, pero los scores completos quedan en caché.</p>
 
-        <h3>Solape temporal e IoU</h3>
-        <p>Después del umbral de coseno se aplica supresión no máxima (NMS) temporal. Para dos ventanas $A$ y $B$:</p>
-        <p>$$IoU(A,B)=\frac{|A\cap B|}{|A\cup B|}$$</p>
-        <p>Los candidatos se ordenan de mayor a menor score. Una ventana se suprime cuando su IoU con una ventana ya conservada supera el máximo elegido.</p>
+        <h3>Picos, valles y separación de huellas</h3>
+        <p>Los máximos locales del perfil son huellas candidatas. Entre dos picos $p_1,p_2$ con valle $v$ se evalúa una profundidad relativa:</p>
+        <p>$$V=\frac{\min(p_1,p_2)-v}{\min(p_1,p_2)-\tau}$$</p>
+        <p>El control <strong>Separación entre huellas</strong> modifica el mínimo $V$ requerido. Hacia <em>Unir</em> se exige un valle profundo para crear dos eventos; hacia <em>Separar</em> un valle más pequeño ya permite dividirlos. Este cálculo usa los scores existentes y no recalcula embeddings.</p>
+
+        <h3>Ajuste de bordes por ancho del pico</h3>
+        <p>Para cada pico se determina un nivel relativo de prominencia:</p>
+        <p>$$h=v_*+\alpha(p-v_*)$$</p>
+        <p>donde $p$ es el máximo, $v_*$ es el nivel local de valle/prominencia y $\alpha$ está controlado por <strong>Ajuste de bordes</strong>. Hacia <em>Fino</em> se usa un nivel menor, el soporte temporal del pico es más ancho y la caja estimada resulta más estrecha; hacia <em>Conservador</em> ocurre lo contrario.</p>
+        <p>Sean $c_L$ y $c_R$ los cruces del perfil con $h$. Su ancho de soporte es:</p>
+        <p>$$W=c_R-c_L$$</p>
+        <p>Con una ventana Perch2 de longitud $L=5\,s$, el encajado de las ventanas extremas da:</p>
+        <p>$$[t_{inicio},t_{fin}]=\left[c_R-\frac{L}{2},\;c_L+\frac{L}{2}\right]$$</p>
+        <p>y por tanto la duración estimada es:</p>
+        <p>$$D=L-W$$</p>
+        <p>El centro estimado de la ocurrencia es el punto medio de los cruces del soporte:</p>
+        <p>$$\hat m=\frac{c_L+c_R}{2}$$</p>
+        <p>La duración propuesta por el perfil es:</p>
+        <p>$$D_{perfil}=\max(0,L-W)$$</p>
+        <p>Sea $D_T$ el ancho temporal de la plantilla realmente usada por Perch2 (la ROI simple o la muestra #1 en multimuestra). v48.2 impone:</p>
+        <p>$$D_{final}=\max(D_T,D_{perfil})$$</p>
+        <p>Si el perfil propone una caja más corta que la plantilla, se conserva $\hat m$ y la caja se expande simétricamente alrededor de ese centro hasta medir $D_T$. El Paso temporal $\Delta$ ya no define el ancho mínimo: controla la resolución de muestreo y la incertidumbre con la que se observa el perfil.</p>
+        <p>Si solo una ventana supera el umbral, no hay información de solapamiento para estrechar: se conservan sus 5 s; si la plantilla fuese más larga, se respeta al menos $D_T$.</p>
+        <p><strong>Padding final</strong> expande posteriormente ambos bordes; no participa en la inferencia ni en la detección de picos.</p>
 
         <h3>Qué recalcula el modelo</h3>
         <table>
           <thead><tr><th>Cambio</th><th>Efecto</th></tr></thead>
           <tbody>
             <tr><td>Plantilla / primera muestra</td><td>Invalida embeddings/candidatos Perch2.</td></tr>
-            <tr><td>Audio completo ↔ banda ↔ comparar</td><td>Requiere nueva inferencia.</td></tr>
-            <tr><td>$f_{min}$ / $f_{max}$</td><td>Requiere nueva inferencia porque cambia la señal filtrada.</td></tr>
+            <tr><td>Automático ↔ Audio completo ↔ Banda</td><td>Requiere nueva inferencia porque cambia la señal entregada al modelo.</td></tr>
+            <tr><td>Frecuencia mínima / máxima manual</td><td>Requiere nueva inferencia solo en Banda de frecuencias.</td></tr>
             <tr><td>Paso temporal</td><td>Requiere nueva inferencia porque cambia el conjunto de ventanas.</td></tr>
-            <tr><td>Score mínimo</td><td>Refiltra candidatos existentes; no recalcula embeddings.</td></tr>
-            <tr><td>IoU máximo</td><td>Reaplica NMS; no recalcula embeddings.</td></tr>
-            <tr><td>Excluir plantilla</td><td>Refiltra candidatos; no recalcula embeddings.</td></tr>
+            <tr><td>Score mínimo</td><td>Refiltra el perfil existente; no recalcula embeddings.</td></tr>
+            <tr><td>Ajuste de bordes</td><td>Reestima el ancho de los picos y las cajas desde el perfil en caché.</td></tr>
+            <tr><td>Separación entre huellas</td><td>Reevalúa picos/valles y el número de eventos desde el perfil en caché.</td></tr>
+            <tr><td>Padding / excluir plantilla</td><td>Reconstruye resultados sin recalcular embeddings.</td></tr>
           </tbody>
         </table>
 
         <h3>Ejecución local</h3>
-        <p><code>perch-worker.js</code> descarga el runtime ONNX y el modelo como recursos estáticos cuando se usan por primera vez. Intenta WebGPU; si no está disponible, usa WASM. El audio se envía al worker dentro del navegador y no se envía a un servidor de inferencia.</p>
+        <p><code>perch-worker.js</code> descarga ONNX Runtime y el modelo como recursos estáticos cuando se usan por primera vez. Intenta WebGPU y usa WASM como fallback. El audio permanece dentro del navegador.</p>
       </section>
 
       <section id="resultados" data-search="tabla metodo perch2 clasica score csv xlsx txt audacity exportacion cajas">
         <h2>Resultados y exportación</h2>
-        <p>Las coincidencias aceptadas de ambos motores se dibujan sobre el espectrograma y se listan en una sola tabla. La columna <strong>método</strong> distingue <em>Búsqueda clásica</em>, <em>Perch2 · audio</em> y <em>Perch2 · banda</em>. La tabla conserva etiqueta, score y límites temporales/frecuenciales.</p>
+        <p>Las coincidencias aceptadas de ambos motores se dibujan sobre el espectrograma y se listan en una sola tabla. La columna <strong>método</strong> distingue <em>Búsqueda clásica</em>, <em>Perch2 · automático</em>, <em>Perch2 · audio</em> y <em>Perch2 · banda</em>. La tabla conserva etiqueta, score y límites temporales/frecuenciales.</p>
         <h3>CSV</h3><p>Formato tabular abierto para análisis posterior; incluye la columna <code>metodo</code>.</p>
         <h3>XLSX</h3><p>Versión de hoja de cálculo para revisión y distribución; incluye la columna <code>metodo</code>.</p>
         <h3>TXT Audacity</h3><p>Exporta etiquetas temporales y frecuencia para importación en pistas de etiquetas de Audacity.</p>
@@ -669,15 +692,19 @@ overview completo</div>
 
       <section id="cambios" data-search="changelog control cambios 46 perch2 45.8.4 45.8.3 45.8.2 45.8.1 45.8">
         <h2>Control de cambios</h2>
-        <h3>v46 — actual</h3>
+        <h3>v48.2 — actual</h3>
+        <p><strong>Ancho mínimo = plantilla:</strong> el perfil temporal define el centro y una duración propuesta, pero la caja final no puede ser más corta que la referencia usada por Perch2. El paso temporal queda como resolución del perfil.</p>
         <ul>
-          <li>Nuevo motor Perch2 ONNX local en worker independiente.</li>
-          <li>Audio completo como modo predeterminado; banda manual y comparar como opciones.</li>
-          <li>Selector dual fmin/fmax en coordenada Mel con salida analítica en Hz.</li>
-          <li>Perch2 usa la primera muestra (#1) cuando la plantilla es multi-muestra.</li>
-          <li>Coseno real, IoU/NMS, progreso/cancelación y backend WebGPU/WASM.</li>
-          <li>Resultados unificados con columna método y exportación del origen.</li>
+          <li>Automático pasa a ser el modo Perch2 predeterminado y usa la banda de la referencia.</li>
+          <li>Comparar se retira de la UX principal; permanecen Automático, Audio completo y Banda de frecuencias.</li>
+          <li>El perfil temporal del coseno sustituye el refinamiento por masa de evidencia: picos y valles separan huellas y el ancho del pico ajusta los bordes.</li>
+          <li>Ajuste de bordes y Separación entre huellas actúan instantáneamente sobre scores/embeddings ya calculados.</li>
+          <li>La duración mínima refinada es el ancho temporal de la plantilla usada por Perch2; el Paso temporal describe la resolución del perfil. Una sola ventana conserva 5 s salvo que la plantilla sea más larga.</li>
         </ul>
+        <h3>v47.1</h3>
+        <p>Introdujo Automático como modo Perch2 predeterminado y el refinamiento por perfil temporal de coseno con Ajuste de bordes y Separación entre huellas; en esa versión el ancho mínimo todavía estaba limitado por el Paso temporal.</p>
+        <h3>v47</h3>
+        <p>Introdujo el pool interactivo de la búsqueda clásica y el primer refinamiento temporal Perch2 por soporte acumulado, además de las convenciones globales de frecuencia.</p>
         <h3>v45.8.4</h3>
         <p>Preview de plantilla oculto hasta que existe una selección válida; consolidación documental con README, buscador, AGENTS y CHANGELOG.</p>
         <h3>v45.8.3</h3><p>Eliminación de títulos redundantes `[kHz]` y `[s]` dentro del preview.</p>
@@ -700,7 +727,7 @@ overview completo</div>
         <details><summary>v11 / v9 — métricas y exportación</summary><div><p>Unificación de score 0–1, correlación normalizada, etiquetas opcionales y exportación TXT Audacity.</p></div></details>
       </section>
 
-      <div class="footer">Bioacoustic Template Labeler · documentación v46 · Proyecto web estático con procesamiento local en el navegador.</div>
+      <div class="footer">Bioacoustic Template Labeler · documentación v48.2 · Proyecto web estático con procesamiento local en el navegador.</div>
     </main>
   </div>
 

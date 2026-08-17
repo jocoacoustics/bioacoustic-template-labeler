@@ -471,7 +471,7 @@ function searchEmbedding(msg) {
     ? rankedAll.filter(m => m.score >= threshold || (m.score >= softThreshold && (m.prominence || 0) >= prominenceMin))
     : rankedAll.filter(m => m.score >= threshold)
   ).slice(0, limit);
-  self.postMessage({ type: 'search-ready', matches: kept, auto });
+  self.postMessage({ type: 'search-ready', matches: kept, candidatePool: rankedAll, auto, poolMeta: { minSeparationSec: framesToSeconds(minSepFrames), candidatesEvaluated: candidates.length } });
 }
 function isValidRoiMsg(roi) {
   return Boolean(roi && Number.isFinite(Number(roi.tmin)) && Number.isFinite(Number(roi.tmax)) && Number.isFinite(Number(roi.fmin)) && Number.isFinite(Number(roi.fmax)) && Number(roi.tmax) > Number(roi.tmin) && Number(roi.fmax) > Number(roi.fmin));

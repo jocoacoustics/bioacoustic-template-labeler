@@ -1,6 +1,6 @@
 'use strict';
 
-// Bioacoustic Template Labeler v46 · Perch2 browser worker
+// Bioacoustic Template Labeler v48.2 · Perch2 browser worker
 // Inferencia local: el runtime ONNX y el modelo se descargan como recursos
 // estáticos; el audio del usuario permanece en el navegador.
 
@@ -164,18 +164,18 @@ async function runSearch(message){
   if(searchRunning)throw new Error('Ya hay una búsqueda Perch2 en curso.');
   searchRunning=true; cancelRequested=false; const started=performance.now();
   try{
-    await ensureSession(); const mode=['full','band','compare'].includes(message.mode)?message.mode:'full'; const strideSec=clamp(Number(message.strideSec)||0.5,0.05,10);
-    const template=message.template||{}; const contexts=templateContextStarts(Number(template.tmin)||0,Number(template.tmax)||0); const starts=scanStarts(strideSec); const factor=mode==='compare'?2:1; const progress={done:0,total:(contexts.length+starts.length)*factor};
-    const raw=(mode==='full'||mode==='compare')?getRaw32k():null;
-    const band=(mode==='band'||mode==='compare')?getBand32k(Number(message.bandFminHz)||0,Number(message.bandFmaxHz)||nativeSampleRate/2):null;
+    await ensureSession(); const mode=['auto','full','band'].includes(message.mode)?message.mode:'auto'; const strideSec=clamp(Number(message.strideSec)||0.5,0.05,10);
+    const template=message.template||{}; const contexts=templateContextStarts(Number(template.tmin)||0,Number(template.tmax)||0); const starts=scanStarts(strideSec); const progress={done:0,total:(contexts.length+starts.length)};
+    const raw=mode==='full'?getRaw32k():null;
+    const band=(mode==='auto'||mode==='band')?getBand32k(Number(message.bandFminHz)||0,Number(message.bandFmaxHz)||nativeSampleRate/2):null;
     let protoRaw=null,protoBand=null; if(raw)protoRaw=await makePrototype(raw,contexts,progress); if(band)protoBand=await makePrototype(band,contexts,progress);
     const candidates=[];
     for(let i=0;i<starts.length;i+=1){if(cancelRequested)throw new Error('__PERCH_CANCELLED__');const start=starts[i];const candidate={tmin:start,tmax:Math.min(duration,start+WINDOW_S)};
       if(raw){const emb=await embedWindow(raw,start);candidate.scoreRaw=dot(protoRaw,emb);progress.done+=1;emitSearchProgress(progress,`Perch2 audio completo · ventana ${i+1}/${starts.length}`);}
-      if(band){const emb=await embedWindow(band,start);candidate.scoreBand=dot(protoBand,emb);progress.done+=1;emitSearchProgress(progress,`Perch2 banda · ventana ${i+1}/${starts.length}`);}
+      if(band){const emb=await embedWindow(band,start);candidate.scoreBand=dot(protoBand,emb);progress.done+=1;emitSearchProgress(progress,`${mode==='auto'?'Perch2 automático':'Perch2 banda'} · ventana ${i+1}/${starts.length}`);}
       candidates.push(candidate);
     }
-    post('perch-search-ready',{candidates,mode,backend:backendUsed,contexts:contexts.length,windows:starts.length,elapsedMs:performance.now()-started,targetSampleRate:TARGET_SR,embeddingDim:EMBEDDING_DIM,windowSec:WINDOW_S});
+    post('perch-search-ready',{candidates,mode,bandFminHz:Number(message.bandFminHz),bandFmaxHz:Number(message.bandFmaxHz),backend:backendUsed,contexts:contexts.length,windows:starts.length,elapsedMs:performance.now()-started,targetSampleRate:TARGET_SR,embeddingDim:EMBEDDING_DIM,windowSec:WINDOW_S});
   }catch(err){if(String(err&&err.message)==='__PERCH_CANCELLED__')post('perch-cancelled',{message:'Búsqueda Perch2 cancelada.'});else throw err;}
   finally{searchRunning=false;cancelRequested=false;}
 }

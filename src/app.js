@@ -227,6 +227,7 @@ const el = {
   perchMultiWarning: document.getElementById('perchMultiWarning'),
   perchSignalMode: document.getElementById('perchSignalMode'),
   perchSignalSegments: document.getElementById('perchSignalSegments'),
+  perchSignalHelp: document.getElementById('perchSignalHelp'),
   perchBandPanel: document.getElementById('perchBandPanel'),
   perchFminRange: document.getElementById('perchFminRange'),
   perchFmaxRange: document.getElementById('perchFmaxRange'),
@@ -241,8 +242,15 @@ const el = {
   perchWindowEstimate: document.getElementById('perchWindowEstimate'),
   perchScore: document.getElementById('perchScore'),
   perchScoreInput: document.getElementById('perchScoreInput'),
-  perchIou: document.getElementById('perchIou'),
-  perchIouInput: document.getElementById('perchIouInput'),
+  perchTemporalRefine: document.getElementById('perchTemporalRefine'),
+  perchResolutionText: document.getElementById('perchResolutionText'),
+  perchStrideResolutionText: document.getElementById('perchStrideResolutionText'),
+  perchEdgeAdjustment: document.getElementById('perchEdgeAdjustment'),
+  perchEdgeText: document.getElementById('perchEdgeText'),
+  perchPeakSeparation: document.getElementById('perchPeakSeparation'),
+  perchSeparationText: document.getElementById('perchSeparationText'),
+  perchPadding: document.getElementById('perchPadding'),
+  perchPaddingInput: document.getElementById('perchPaddingInput'),
   perchExcludeTemplate: document.getElementById('perchExcludeTemplate'),
   perchLocalBadge: document.getElementById('perchLocalBadge'),
   perchProgressWrap: document.getElementById('perchProgressWrap'),
@@ -490,10 +498,13 @@ function getActiveTemplate() {
 }
 
 const PERCH2_DEFAULTS = Object.freeze({
-  signalMode: 'full',
+  signalMode: 'auto',
   strideSec: 0.50,
   scoreThreshold: 0.70,
-  maxIou: 0.30,
+  temporalRefine: true,
+  edgeAdjustment: 0.40,
+  peakSeparation: 0.50,
+  paddingSec: 0.00,
   excludeTemplate: true,
 });
 
@@ -502,10 +513,13 @@ function perchNyquist() {
   return Math.max(100, Math.min(16000, nativeNyquist));
 }
 
+function formatKhz(hz) { return `${(Number(hz || 0) / 1000).toFixed(3)} kHz`; }
+function formatKhzRange(fminHz, fmaxHz) { return `${(Number(fminHz || 0)/1000).toFixed(3)}–${(Number(fmaxHz || 0)/1000).toFixed(3)} kHz`; }
+
 function getPerchReferenceRoi(tpl) {
   if (!tpl) return null;
   if (tpl.useMultiSamples) {
-    // Invariante v46: Perch2 usa SOLO la primera muestra real de una plantilla multimuestra.
+    // Invariante v48.2: Perch2 usa SOLO la primera muestra real de una plantilla multimuestra.
     const first = Array.isArray(tpl.samples) ? tpl.samples[0] : null;
     return isRoiValid(first) ? cloneRoi(first) : null;
   }
@@ -516,10 +530,15 @@ function ensurePerchConfig(tpl) {
   if (!tpl) return null;
   if (!Array.isArray(tpl.perchMatches)) tpl.perchMatches = [];
   const cfg = tpl.perch2 && typeof tpl.perch2 === 'object' ? tpl.perch2 : {};
-  cfg.signalMode = ['full', 'band', 'compare'].includes(cfg.signalMode) ? cfg.signalMode : PERCH2_DEFAULTS.signalMode;
+  // Migración v47 → v47.1: Comparar se sustituye por Automático.
+  if (cfg.signalMode === 'compare') cfg.signalMode = 'auto';
+  cfg.signalMode = ['auto', 'full', 'band'].includes(cfg.signalMode) ? cfg.signalMode : PERCH2_DEFAULTS.signalMode;
   cfg.strideSec = clamp(Number(cfg.strideSec ?? PERCH2_DEFAULTS.strideSec), 0.25, 2.00);
   cfg.scoreThreshold = clamp(Number(cfg.scoreThreshold ?? PERCH2_DEFAULTS.scoreThreshold), -1, 1);
-  cfg.maxIou = clamp(Number(cfg.maxIou ?? PERCH2_DEFAULTS.maxIou), 0, 1);
+  cfg.temporalRefine = cfg.temporalRefine !== false;
+  cfg.edgeAdjustment = clamp(Number(cfg.edgeAdjustment ?? PERCH2_DEFAULTS.edgeAdjustment), 0, 1);
+  cfg.peakSeparation = clamp(Number(cfg.peakSeparation ?? PERCH2_DEFAULTS.peakSeparation), 0, 1);
+  cfg.paddingSec = clamp(Number(cfg.paddingSec ?? PERCH2_DEFAULTS.paddingSec), 0, 1.00);
   cfg.excludeTemplate = cfg.excludeTemplate !== false;
   if (!Array.isArray(cfg.candidates)) cfg.candidates = [];
   cfg.hasSearched = Boolean(cfg.hasSearched);
@@ -539,6 +558,35 @@ function ensurePerchConfig(tpl) {
   }
   tpl.perch2 = cfg;
   return cfg;
+}
+
+function invalidateClassicResults(tpl) {
+  if (!tpl) return;
+  tpl.matches = [];
+  tpl.classicCandidates = [];
+  tpl.classicPoolMeta = null;
+  tpl.hasSearched = false;
+  tpl.lastAuto = null;
+}
+
+function buildClassicMatchesFromCandidates(tpl) {
+  if (!tpl || !Array.isArray(tpl.classicCandidates) || !tpl.classicCandidates.length) return [];
+  const threshold = clamp(Number(tpl.scoreThreshold ?? 0.85), 0, 0.99);
+  const etiqueta = displayLabelForTemplate(tpl);
+  return tpl.classicCandidates
+    .filter(m => Number.isFinite(Number(m.score)) && Number(m.score) >= threshold)
+    .slice(0, CONFIG.maxMatchesToStore)
+    .map(m => ({ ...addEtiquetaToMatch(m, etiqueta), templateId: tpl.id, templateLabel: etiqueta, color: tpl.color, methodKey: 'classic', method: 'Búsqueda clásica' }));
+}
+
+function refreshClassicMatchesFromCache(tpl = getActiveTemplate()) {
+  if (!tpl || !tpl.hasSearched || !Array.isArray(tpl.classicCandidates) || !tpl.classicCandidates.length) return false;
+  tpl.matches = buildClassicMatchesFromCandidates(tpl);
+  tpl.lastAuto = null;
+  refreshCombinedMatches();
+  updateSearchSummaryText();
+  drawOverlay();
+  return true;
 }
 
 function invalidatePerchResults(tpl) {
@@ -569,14 +617,49 @@ function perchSliderToHz(value) {
 }
 
 function setPerchModeButtons(mode) {
-  const safe = ['full', 'band', 'compare'].includes(mode) ? mode : 'full';
+  const safe = ['auto', 'full', 'band'].includes(mode) ? mode : 'auto';
   if (el.perchSignalMode) el.perchSignalMode.value = safe;
   el.perchSignalSegments?.querySelectorAll('[data-perch-mode]').forEach(btn => {
     btn.classList.toggle('active', btn.dataset.perchMode === safe);
     btn.setAttribute('aria-checked', btn.dataset.perchMode === safe ? 'true' : 'false');
   });
-  // Audio completo es el default. El panel manual solo se despliega si la banda participa.
-  if (el.perchBandPanel) el.perchBandPanel.classList.toggle('is-hidden', safe === 'full');
+  // v47.1: solo Banda de frecuencias expone el rango manual.
+  if (el.perchBandPanel) el.perchBandPanel.classList.toggle('is-hidden', safe !== 'band');
+  updatePerchSignalHelp(safe);
+}
+
+function getPerchEffectiveBand(tpl, cfg = ensurePerchConfig(tpl)) {
+  const maxHz = perchNyquist();
+  if (cfg?.signalMode === 'auto') {
+    const ref = getPerchReferenceRoi(tpl);
+    if (ref) {
+      let fminHz = clamp(Number(ref.fmin) || 0, 0, maxHz);
+      let fmaxHz = clamp(Number(ref.fmax) || maxHz, 0, maxHz);
+      if (fmaxHz <= fminHz) fmaxHz = Math.min(maxHz, fminHz + 100);
+      return { fminHz, fmaxHz, automatic: true };
+    }
+  }
+  let fminHz = clamp(Number(cfg?.bandFminHz) || 0, 0, maxHz);
+  let fmaxHz = clamp(Number(cfg?.bandFmaxHz) || maxHz, 0, maxHz);
+  if (fmaxHz <= fminHz) fmaxHz = Math.min(maxHz, fminHz + 100);
+  return { fminHz, fmaxHz, automatic: false };
+}
+
+function updatePerchSignalHelp(mode = null) {
+  if (!el.perchSignalHelp) return;
+  const tpl = getActiveTemplate();
+  const cfg = tpl ? ensurePerchConfig(tpl) : null;
+  const safe = mode || cfg?.signalMode || PERCH2_DEFAULTS.signalMode;
+  if (safe === 'auto') {
+    const band = tpl ? getPerchEffectiveBand(tpl, cfg) : null;
+    el.perchSignalHelp.textContent = band
+      ? `Automático usa la banda de la muestra usada por Perch2: ${formatKhzRange(band.fminHz, band.fmaxHz)}.`
+      : 'Automático usa exclusivamente el rango de frecuencias de la muestra usada por Perch2.';
+  } else if (safe === 'band') {
+    el.perchSignalHelp.textContent = 'Banda de frecuencias usa el rango manual definido abajo antes de calcular el embedding.';
+  } else {
+    el.perchSignalHelp.textContent = 'Audio completo entrega a Perch2 los 5 s sin filtro frecuencial previo.';
+  }
 }
 
 function setPerchProgress(progress = 0, message = '', status = 'idle') {
@@ -623,15 +706,15 @@ function updatePerchDualRangeVisual(changed = '') {
   }
   if (el.perchFminInput) {
     el.perchFminInput.max = (perchNyquist() / 1000).toFixed(3);
-    el.perchFminInput.value = (fmin / 1000).toFixed(2);
+    el.perchFminInput.value = (fmin / 1000).toFixed(3);
   }
   if (el.perchFmaxInput) {
     el.perchFmaxInput.max = (perchNyquist() / 1000).toFixed(3);
-    el.perchFmaxInput.value = (fmax / 1000).toFixed(2);
+    el.perchFmaxInput.value = (fmax / 1000).toFixed(3);
   }
-  if (el.perchBandRangeText) el.perchBandRangeText.textContent = `${(fmin/1000).toFixed(2)}–${(fmax/1000).toFixed(2)} kHz`;
-  if (el.perchRangeMinLabel) el.perchRangeMinLabel.textContent = '0.00 kHz';
-  if (el.perchRangeMaxLabel) el.perchRangeMaxLabel.textContent = `${(perchNyquist()/1000).toFixed(2)} kHz`;
+  if (el.perchBandRangeText) el.perchBandRangeText.textContent = formatKhzRange(fmin, fmax);
+  if (el.perchRangeMinLabel) el.perchRangeMinLabel.textContent = '0.000 kHz';
+  if (el.perchRangeMaxLabel) el.perchRangeMaxLabel.textContent = formatKhz(perchNyquist());
 }
 
 function syncPerchBandHandlesFromInputs(changed = '') {
@@ -671,7 +754,7 @@ function updatePerchTemplateSummary(tpl = getActiveTemplate()) {
   if (el.perchTplMode) el.perchTplMode.textContent = `Modo: ${multi ? 'Multi-muestra' : 'Simple'}`;
   if (el.perchTplSample) el.perchTplSample.textContent = multi ? 'Muestra usada por Perch2: #1' : 'Muestra usada: plantilla simple';
   if (el.perchTplTime) el.perchTplTime.textContent = `Tiempo: ${fmt(ref.tmin,2)}–${fmt(ref.tmax,2)} s`;
-  if (el.perchTplFreq) el.perchTplFreq.textContent = `Frecuencia: ${fmt(ref.fmin/1000,2)}–${fmt(ref.fmax/1000,2)} kHz`;
+  if (el.perchTplFreq) el.perchTplFreq.textContent = `Frecuencia: ${formatKhzRange(ref.fmin, ref.fmax)}`;
   if (el.perchMultiWarning) el.perchMultiWarning.classList.toggle('is-hidden', !multi);
 }
 
@@ -684,11 +767,16 @@ function applyPerchConfigToUi(tpl) {
   if (el.perchStrideInput) el.perchStrideInput.value = Number(cfg?.strideSec ?? PERCH2_DEFAULTS.strideSec).toFixed(2);
   if (el.perchScore) el.perchScore.value = String(cfg?.scoreThreshold ?? PERCH2_DEFAULTS.scoreThreshold);
   if (el.perchScoreInput) el.perchScoreInput.value = Number(cfg?.scoreThreshold ?? PERCH2_DEFAULTS.scoreThreshold).toFixed(2);
-  if (el.perchIou) el.perchIou.value = String(cfg?.maxIou ?? PERCH2_DEFAULTS.maxIou);
-  if (el.perchIouInput) el.perchIouInput.value = Number(cfg?.maxIou ?? PERCH2_DEFAULTS.maxIou).toFixed(2);
+  if (el.perchTemporalRefine) el.perchTemporalRefine.checked = cfg?.temporalRefine ?? PERCH2_DEFAULTS.temporalRefine;
+  if (el.perchEdgeAdjustment) el.perchEdgeAdjustment.value = String(Math.round(100 * (cfg?.edgeAdjustment ?? PERCH2_DEFAULTS.edgeAdjustment)));
+  if (el.perchPeakSeparation) el.perchPeakSeparation.value = String(Math.round(100 * (cfg?.peakSeparation ?? PERCH2_DEFAULTS.peakSeparation)));
+  updatePerchProfileControlLabels(cfg);
+  if (el.perchPadding) el.perchPadding.value = String(cfg?.paddingSec ?? PERCH2_DEFAULTS.paddingSec);
+  if (el.perchPaddingInput) el.perchPaddingInput.value = Number(cfg?.paddingSec ?? PERCH2_DEFAULTS.paddingSec).toFixed(2);
   if (el.perchExcludeTemplate) el.perchExcludeTemplate.checked = cfg?.excludeTemplate ?? PERCH2_DEFAULTS.excludeTemplate;
   setPerchBandHandlesFromHz(cfg?.bandFminHz ?? 0, cfg?.bandFmaxHz ?? perchNyquist());
   updatePerchWindowEstimate();
+  updatePerchTemporalResolutionUi(cfg, tpl);
   updatePerchSummary(tpl);
   updatePerchButtonsState();
 }
@@ -698,10 +786,13 @@ function syncActiveTemplatePerchParamsFromUi({ invalidateExpensive = false, refr
   if (!tpl) return;
   const cfg = ensurePerchConfig(tpl);
   const previous = `${cfg.signalMode}|${cfg.strideSec}|${Math.round(cfg.bandFminHz)}|${Math.round(cfg.bandFmaxHz)}`;
-  cfg.signalMode = ['full','band','compare'].includes(el.perchSignalMode?.value) ? el.perchSignalMode.value : 'full';
+  cfg.signalMode = ['auto','full','band'].includes(el.perchSignalMode?.value) ? el.perchSignalMode.value : 'auto';
   cfg.strideSec = clamp(Number(el.perchStride?.value ?? el.perchStrideInput?.value ?? cfg.strideSec), 0.25, 2.00);
   cfg.scoreThreshold = clamp(Number(el.perchScore?.value ?? el.perchScoreInput?.value ?? cfg.scoreThreshold), -1, 1);
-  cfg.maxIou = clamp(Number(el.perchIou?.value ?? el.perchIouInput?.value ?? cfg.maxIou), 0, 1);
+  cfg.temporalRefine = Boolean(el.perchTemporalRefine?.checked);
+  cfg.edgeAdjustment = clamp(Number(el.perchEdgeAdjustment?.value ?? (cfg.edgeAdjustment*100)) / 100, 0, 1);
+  cfg.peakSeparation = clamp(Number(el.perchPeakSeparation?.value ?? (cfg.peakSeparation*100)) / 100, 0, 1);
+  cfg.paddingSec = clamp(Number(el.perchPadding?.value ?? el.perchPaddingInput?.value ?? cfg.paddingSec), 0, 1.00);
   cfg.excludeTemplate = Boolean(el.perchExcludeTemplate?.checked);
   cfg.bandFminHz = clamp(Number(el.perchFminInput?.value) * 1000 || 0, 0, perchNyquist());
   cfg.bandFmaxHz = clamp(Number(el.perchFmaxInput?.value) * 1000 || perchNyquist(), 0, perchNyquist());
@@ -715,53 +806,294 @@ function syncActiveTemplatePerchParamsFromUi({ invalidateExpensive = false, refr
     refreshPerchMatchesFromCache(tpl);
   }
   updatePerchWindowEstimate();
+  updatePerchTemporalResolutionUi(cfg, tpl);
   updatePerchSummary(tpl);
   updatePerchButtonsState();
 }
 
-function temporalIou(a, b) {
-  const inter = Math.max(0, Math.min(a.tmax, b.tmax) - Math.max(a.tmin, b.tmin));
-  const union = Math.max(0, Math.max(a.tmax, b.tmax) - Math.min(a.tmin, b.tmin));
-  return union > 0 ? inter / union : 0;
+function updatePerchTemporalResolutionUi(cfg = null, tpl = getActiveTemplate()) {
+  const stride = clamp(Number(cfg?.strideSec ?? el.perchStride?.value ?? 0.5), 0.25, 2.0);
+  const ref = getPerchReferenceRoi(tpl);
+  const templateWidth = ref ? Math.max(0, Number(ref.tmax) - Number(ref.tmin)) : 0;
+  if (el.perchResolutionText) {
+    el.perchResolutionText.textContent = templateWidth > 0
+      ? `Ancho mínimo: ${templateWidth.toFixed(3)} s · plantilla`
+      : 'Ancho mínimo: — · plantilla';
+  }
+  if (el.perchStrideResolutionText) el.perchStrideResolutionText.textContent = `Paso: ${stride.toFixed(3)} s`;
+  updatePerchProfileControlLabels(cfg);
+}
+
+function profileEdgeAlpha(cfg) {
+  // 0 = Fino: nivel bajo de prominencia → soporte ancho → caja estrecha.
+  // 1 = Conservador: nivel alto → soporte estrecho → caja más amplia.
+  const x = clamp(Number(cfg?.edgeAdjustment ?? PERCH2_DEFAULTS.edgeAdjustment), 0, 1);
+  return 0.20 + 0.65 * x;
+}
+
+function profileRequiredValleyDepth(cfg) {
+  // 0 = Unir: exige un valle muy profundo. 1 = Separar: acepta valles más pequeños.
+  const x = clamp(Number(cfg?.peakSeparation ?? PERCH2_DEFAULTS.peakSeparation), 0, 1);
+  return 0.70 - 0.60 * x;
+}
+
+function updatePerchProfileControlLabels(cfg = null) {
+  const edge = clamp(Number(cfg?.edgeAdjustment ?? el.perchEdgeAdjustment?.value / 100 ?? PERCH2_DEFAULTS.edgeAdjustment), 0, 1);
+  const separation = clamp(Number(cfg?.peakSeparation ?? el.perchPeakSeparation?.value / 100 ?? PERCH2_DEFAULTS.peakSeparation), 0, 1);
+  if (el.perchEdgeText) el.perchEdgeText.textContent = edge < 0.28 ? 'Fino' : edge > 0.68 ? 'Conservador' : 'Equilibrado';
+  if (el.perchSeparationText) el.perchSeparationText.textContent = separation < 0.28 ? 'Unir' : separation > 0.68 ? 'Separar' : 'Equilibrada';
 }
 
 function perchCandidateView(candidate, cfg) {
+  if (cfg.signalMode === 'auto') return { score: Number(candidate.scoreBand), source: 'auto' };
   if (cfg.signalMode === 'band') return { score: Number(candidate.scoreBand), source: 'band' };
-  if (cfg.signalMode === 'compare') {
-    const raw = Number(candidate.scoreRaw); const band = Number(candidate.scoreBand);
-    if (Number.isFinite(band) && (!Number.isFinite(raw) || band > raw)) return { score: band, source: 'band' };
-    return { score: raw, source: 'full' };
-  }
   return { score: Number(candidate.scoreRaw), source: 'full' };
 }
 
-function buildPerchMatchesFromCandidates(tpl) {
-  const cfg = ensurePerchConfig(tpl);
-  const ref = getPerchReferenceRoi(tpl);
-  if (!ref || !cfg.candidates.length) return [];
-  const eligible = [];
+function buildPerchProfilePoints(tpl, cfg, ref) {
+  const points=[];
   for (const candidate of cfg.candidates) {
-    const view = perchCandidateView(candidate, cfg);
-    if (!Number.isFinite(view.score) || view.score < cfg.scoreThreshold) continue;
-    if (cfg.excludeTemplate && Math.max(candidate.tmin, ref.tmin) < Math.min(candidate.tmax, ref.tmax)) continue;
-    eligible.push({ ...candidate, score: view.score, perchSource: view.source });
+    const view=perchCandidateView(candidate,cfg);
+    if (!Number.isFinite(view.score)) continue;
+    if (cfg.excludeTemplate && Math.max(candidate.tmin,ref.tmin)<Math.min(candidate.tmax,ref.tmax)) continue;
+    points.push({
+      ...candidate,
+      score:view.score,
+      perchSource:view.source,
+      center:(Number(candidate.tmin)+Number(candidate.tmax))/2,
+    });
   }
-  eligible.sort((a,b) => b.score - a.score || a.tmin - b.tmin);
-  const kept = [];
-  for (const candidate of eligible) {
-    if (kept.some(prev => temporalIou(prev, candidate) > cfg.maxIou)) continue;
-    kept.push(candidate);
-    if (kept.length >= CONFIG.maxMatchesToStore) break;
+  return points.sort((a,b)=>a.center-b.center || b.score-a.score);
+}
+
+function splitPerchActiveBlocks(points, cfg) {
+  const blocks=[];
+  const maxGap=Math.max(1e-6,cfg.strideSec*1.55);
+  let current=null;
+  let previous=null;
+  const flush=()=>{ if(current?.points?.length) blocks.push(current); current=null; };
+  for (const point of points) {
+    const contiguous=previous && (point.center-previous.center)<=maxGap;
+    if (point.score>=cfg.scoreThreshold) {
+      if (!current || !contiguous || previous?.score<cfg.scoreThreshold) {
+        flush();
+        current={points:[],leftOutside:contiguous&&previous?.score<cfg.scoreThreshold?previous:null,rightOutside:null};
+      }
+      current.points.push(point);
+    } else if (current) {
+      if (contiguous) current.rightOutside=point;
+      flush();
+    }
+    previous=point;
   }
-  const etiqueta = displayLabelForTemplate(tpl);
-  return kept.map(candidate => {
-    const bandWinner = candidate.perchSource === 'band';
+  flush();
+  return blocks;
+}
+
+function findPerchLocalPeaks(points) {
+  if (!points.length) return [];
+  if (points.length===1) return [0];
+  const peaks=[];
+  const eps=1e-10;
+  for (let i=0;i<points.length;i++) {
+    const y=points[i].score;
+    const left=i>0?points[i-1].score:-Infinity;
+    const right=i<points.length-1?points[i+1].score:-Infinity;
+    if (y>=left-eps && y>=right-eps && (y>left+eps || y>right+eps)) peaks.push(i);
+  }
+  if (!peaks.length) {
+    let best=0;
+    for (let i=1;i<points.length;i++) if(points[i].score>points[best].score) best=i;
+    peaks.push(best);
+  }
+  return peaks;
+}
+
+function valleyBetweenPeaks(points, leftPeak, rightPeak) {
+  let idx=leftPeak+1;
+  if (idx>=rightPeak) return null;
+  for (let i=idx+1;i<rightPeak;i++) if(points[i].score<points[idx].score) idx=i;
+  return { index:idx, score:points[idx].score };
+}
+
+function splitPerchBlockByValleys(block, cfg) {
+  const points=block.points;
+  const peaks=findPerchLocalPeaks(points);
+  if (peaks.length<=1) return [{start:0,end:points.length-1}];
+  const requiredDepth=profileRequiredValleyDepth(cfg);
+  const boundaries=[];
+  for (let i=0;i<peaks.length-1;i++) {
+    const leftPeak=peaks[i], rightPeak=peaks[i+1];
+    const valley=valleyBetweenPeaks(points,leftPeak,rightPeak);
+    if (!valley) continue;
+    const minPeak=Math.min(points[leftPeak].score,points[rightPeak].score);
+    const scale=Math.max(1e-6,minPeak-cfg.scoreThreshold);
+    const depth=clamp((minPeak-valley.score)/scale,0,1);
+    if (depth>=requiredDepth) boundaries.push({index:valley.index,depth});
+  }
+  if (!boundaries.length) return [{start:0,end:points.length-1}];
+  const segments=[];
+  let start=0;
+  for (const boundary of boundaries) {
+    if (boundary.index>start) segments.push({start,end:boundary.index,valleyDepth:boundary.depth});
+    start=boundary.index;
+  }
+  if (start<points.length-1) segments.push({start,end:points.length-1});
+  return segments.length?segments:[{start:0,end:points.length-1}];
+}
+
+function interpolateProfileCross(a,b,level) {
+  if (!a || !b) return Number(a?.center ?? b?.center ?? 0);
+  const dy=b.score-a.score;
+  if (Math.abs(dy)<1e-12) return (a.center+b.center)/2;
+  const u=clamp((level-a.score)/dy,0,1);
+  return a.center+u*(b.center-a.center);
+}
+
+function findProfileCrossLeft(block, startIdx, peakIdx, level) {
+  const points=block.points;
+  let i=peakIdx;
+  while(i>startIdx && points[i-1].score>=level) i--;
+  if (i>startIdx) return interpolateProfileCross(points[i-1],points[i],level);
+  if (points[startIdx].score<level && startIdx<peakIdx) return interpolateProfileCross(points[startIdx],points[startIdx+1],level);
+  if (startIdx===0 && block.leftOutside && block.leftOutside.score<level) return interpolateProfileCross(block.leftOutside,points[0],level);
+  return points[startIdx].center;
+}
+
+function findProfileCrossRight(block, endIdx, peakIdx, level) {
+  const points=block.points;
+  let i=peakIdx;
+  while(i<endIdx && points[i+1].score>=level) i++;
+  if (i<endIdx) return interpolateProfileCross(points[i],points[i+1],level);
+  if (points[endIdx].score<level && endIdx>peakIdx) return interpolateProfileCross(points[endIdx-1],points[endIdx],level);
+  if (endIdx===points.length-1 && block.rightOutside && block.rightOutside.score<level) return interpolateProfileCross(points[endIdx],block.rightOutside,level);
+  return points[endIdx].center;
+}
+
+function clampProfileInterval(center, durationSec, paddingSec) {
+  // v48.2: el centro proviene del punto medio del soporte del perfil.
+  // Solo se desplaza si la caja toca los límites reales del audio.
+  const audioEnd=Math.max(0.001,Number(state.duration)||Number(durationSec)||0.001);
+  let width=clamp(Number(durationSec)||0.001,0.001,audioEnd);
+  let a=Number(center)-width/2;
+  let b=Number(center)+width/2;
+  if (a<0) { b-=a; a=0; }
+  if (b>audioEnd) { a-=b-audioEnd; b=audioEnd; }
+  a=Math.max(0,a);
+  b=Math.min(audioEnd,b);
+  const pad=Math.max(0,Number(paddingSec)||0);
+  a=Math.max(0,a-pad);
+  b=Math.min(audioEnd,b+pad);
+  return {tmin:a,tmax:b};
+}
+
+function refinePerchProfileSegment(block, segment, cfg, templateDurationSec) {
+  const points=block.points;
+  const slice=points.slice(segment.start,segment.end+1);
+  if (!slice.length) return null;
+  const representative=[...slice].sort((a,b)=>b.score-a.score || a.center-b.center)[0];
+  const templateMinDuration=Math.max(0.001,Number(templateDurationSec)||0.001);
+  if (slice.length===1) {
+    // Una sola ventana no contiene información suficiente para estrechar.
+    // Se conservan 5 s, salvo que la propia plantilla sea más larga.
+    const windowSec=Math.max(0.001,Number(representative.tmax)-Number(representative.tmin));
+    const singleDuration=Math.max(windowSec,templateMinDuration);
+    const interval=clampProfileInterval(representative.center,singleDuration,cfg.paddingSec);
     return {
-      tmin: Number(candidate.tmin), tmax: Number(candidate.tmax),
-      fmin: bandWinner ? cfg.bandFminHz : ref.fmin,
-      fmax: bandWinner ? cfg.bandFmaxHz : ref.fmax,
-      score: Number(candidate.score), etiqueta, templateId: tpl.id, templateLabel: etiqueta, color: tpl.color,
-      methodKey: 'perch2', method: bandWinner ? 'Perch2 · banda' : 'Perch2 · audio', perchSource: candidate.perchSource,
+      ...representative,
+      tmin:interval.tmin,tmax:interval.tmax,
+      rawWindowCount:1,refined:false,peakTime:representative.center,profileWidth:0,
+      templateMinDuration,profileDuration:windowSec,eventCenter:representative.center,estimatedDuration:singleDuration,
+    };
+  }
+
+  let peakIdx=segment.start;
+  for (let i=segment.start+1;i<=segment.end;i++) if(points[i].score>points[peakIdx].score) peakIdx=i;
+  const peak=points[peakIdx];
+  const leftBase=segment.start>0?points[segment.start].score:Math.max(cfg.scoreThreshold,Number(block.leftOutside?.score ?? cfg.scoreThreshold));
+  const rightBase=segment.end<points.length-1?points[segment.end].score:Math.max(cfg.scoreThreshold,Number(block.rightOutside?.score ?? cfg.scoreThreshold));
+  let baseline=Math.max(cfg.scoreThreshold,leftBase,rightBase);
+  if (!(peak.score>baseline+1e-8)) baseline=cfg.scoreThreshold;
+  const alpha=profileEdgeAlpha(cfg);
+  const level=baseline+alpha*Math.max(0,peak.score-baseline);
+  let supportLeft=findProfileCrossLeft(block,segment.start,peakIdx,level);
+  let supportRight=findProfileCrossRight(block,segment.end,peakIdx,level);
+  if (supportRight<supportLeft) [supportLeft,supportRight]=[supportRight,supportLeft];
+  const supportWidth=Math.max(0,supportRight-supportLeft);
+  const windowSec=Math.max(0.001,Number(peak.tmax)-Number(peak.tmin));
+  const profileDuration=Math.max(0.001,windowSec-supportWidth);
+  // v48.2: el ancho mínimo es el de la plantilla usada realmente por Perch2.
+  // El paso temporal describe la resolución del perfil, no el ancho mínimo.
+  const estimatedDuration=Math.max(templateMinDuration,profileDuration);
+  // La ocurrencia se centra en el punto medio de los cruces izquierdo/derecho.
+  const eventCenter=(supportLeft+supportRight)/2;
+  const interval=clampProfileInterval(eventCenter,estimatedDuration,cfg.paddingSec);
+  return {
+    ...peak,
+    tmin:interval.tmin,
+    tmax:interval.tmax,
+    rawWindowCount:slice.length,
+    refined:true,
+    peakTime:peak.center,
+    peakScore:peak.score,
+    profileLevel:level,
+    profileSupportLeft:supportLeft,
+    profileSupportRight:supportRight,
+    profileWidth:supportWidth,
+    profileDuration,
+    templateMinDuration,
+    eventCenter,
+    estimatedDuration,
+  };
+}
+
+function buildPerchProfileEvents(points, cfg, ref) {
+  const events=[];
+  const templateDuration=Math.max(0.001,Number(ref?.tmax)-Number(ref?.tmin));
+  for (const block of splitPerchActiveBlocks(points,cfg)) {
+    for (const segment of splitPerchBlockByValleys(block,cfg)) {
+      const event=refinePerchProfileSegment(block,segment,cfg,templateDuration);
+      if (event) events.push(event);
+    }
+  }
+  return events
+    .sort((a,b)=>b.score-a.score || a.tmin-b.tmin)
+    .slice(0,CONFIG.maxMatchesToStore)
+    .sort((a,b)=>a.tmin-b.tmin || b.score-a.score);
+}
+
+function buildPerchMatchesFromCandidates(tpl) {
+  const cfg=ensurePerchConfig(tpl);
+  const ref=getPerchReferenceRoi(tpl);
+  if (!ref || !cfg.candidates.length) return [];
+  const points=buildPerchProfilePoints(tpl,cfg,ref);
+  const etiqueta=displayLabelForTemplate(tpl);
+  let events;
+  if (!cfg.temporalRefine) {
+    events=points
+      .filter(point=>point.score>=cfg.scoreThreshold)
+      .sort((a,b)=>b.score-a.score || a.tmin-b.tmin)
+      .slice(0,CONFIG.maxMatchesToStore)
+      .sort((a,b)=>a.tmin-b.tmin || b.score-a.score)
+      .map(point=>({...point,rawWindowCount:1,refined:false}));
+  } else {
+    events=buildPerchProfileEvents(points,cfg,ref);
+  }
+  const effectiveBand=getPerchEffectiveBand(tpl,cfg);
+  return events.map(event=>{
+    const frequencyLocalized=event.perchSource==='band' || event.perchSource==='auto';
+    const method=event.perchSource==='auto'?'Perch2 · automático':event.perchSource==='band'?'Perch2 · banda':'Perch2 · audio';
+    return {
+      tmin:Number(event.tmin),tmax:Number(event.tmax),
+      fmin:frequencyLocalized?effectiveBand.fminHz:0,
+      fmax:frequencyLocalized?effectiveBand.fmaxHz:perchNyquist(),
+      frequencyLocalized,
+      score:Number(event.score),etiqueta,templateId:tpl.id,templateLabel:etiqueta,color:tpl.color,
+      methodKey:'perch2',method,perchSource:event.perchSource,
+      rawWindowCount:event.rawWindowCount||1,refined:Boolean(event.refined),
+      peakTime:event.peakTime,peakScore:event.peakScore,profileLevel:event.profileLevel,
+      profileSupportLeft:event.profileSupportLeft,profileSupportRight:event.profileSupportRight,
+      profileWidth:event.profileWidth,profileDuration:event.profileDuration,templateMinDuration:event.templateMinDuration,eventCenter:event.eventCenter,estimatedDuration:event.estimatedDuration,
     };
   });
 }
@@ -782,7 +1114,9 @@ function updatePerchSummary(tpl = getActiveTemplate()) {
   }
   const cfg = ensurePerchConfig(tpl);
   if (!cfg.hasSearched) {
-    el.perchSummary.textContent = `Pendiente · ${cfg.signalMode === 'full' ? 'audio completo' : cfg.signalMode === 'band' ? 'banda de frecuencias' : 'comparación audio/banda'} · paso ${cfg.strideSec.toFixed(2)} s.`;
+    const modeText=cfg.signalMode==='auto'?'automático':cfg.signalMode==='band'?'banda de frecuencias':'audio completo';
+    const bandText=cfg.signalMode==='auto'?` · ${formatKhzRange(getPerchEffectiveBand(tpl,cfg).fminHz,getPerchEffectiveBand(tpl,cfg).fmaxHz)}`:'';
+    el.perchSummary.textContent = `Pendiente · ${modeText}${bandText} · paso ${cfg.strideSec.toFixed(2)} s.`;
     return;
   }
   const totalCandidates = cfg.candidates.length;
@@ -790,7 +1124,7 @@ function updatePerchSummary(tpl = getActiveTemplate()) {
   const best = total ? Math.max(...tpl.perchMatches.map(m => m.score)) : null;
   const run = cfg.lastRun || {};
   const backend = run.backend || state.perchBackend || 'local';
-  el.perchSummary.textContent = `Perch2 · ${totalCandidates} ventanas · ${total} coincidencia${total===1?'':'s'} después de score/IoU${best != null ? ` · mejor coseno ${best.toFixed(3)}` : ''} · ${backend}.`;
+  el.perchSummary.textContent = `Perch2 · ${totalCandidates} ventanas · ${total} coincidencia${total===1?'':'s'} después de score/perfil temporal${best != null ? ` · mejor coseno ${best.toFixed(3)}` : ''} · ${backend}.`;
 }
 
 function updatePerchButtonsState() {
@@ -805,7 +1139,7 @@ function updatePerchButtonsState() {
 function ensurePerchWorker() {
   if (state.perchWorker) return state.perchWorker;
   if (!state.samples?.length || !(state.sampleRate > 0)) return null;
-  const worker = new Worker('src/perch-worker.js?v=46');
+  const worker = new Worker('src/perch-worker.js?v=48.2');
   state.perchWorker = worker;
   state.perchAudioReady = false;
   worker.onmessage = onPerchWorkerMessage;
@@ -830,8 +1164,9 @@ function startPerchSearch() {
   }
   syncActiveTemplatePerchParamsFromUi();
   const cfg = ensurePerchConfig(tpl);
-  if ((cfg.signalMode === 'band' || cfg.signalMode === 'compare') && !(cfg.bandFmaxHz > cfg.bandFminHz)) {
-    showToast('Banda inválida', 'fmax debe ser mayor que fmin.');
+  const effectiveBand=getPerchEffectiveBand(tpl,cfg);
+  if (cfg.signalMode !== 'full' && !(effectiveBand.fmaxHz > effectiveBand.fminHz)) {
+    showToast('Banda inválida', 'La Frecuencia máxima debe ser mayor que la Frecuencia mínima.');
     return;
   }
   const worker = ensurePerchWorker();
@@ -843,7 +1178,7 @@ function startPerchSearch() {
   openPerchStep();
   worker.postMessage({
     type: 'search', mode: cfg.signalMode, strideSec: cfg.strideSec,
-    bandFminHz: cfg.bandFminHz, bandFmaxHz: cfg.bandFmaxHz,
+    bandFminHz: effectiveBand.fminHz, bandFmaxHz: effectiveBand.fmaxHz,
     template: ref,
   });
 }
@@ -877,7 +1212,7 @@ function onPerchWorkerMessage(ev) {
       const cfg = ensurePerchConfig(tpl);
       cfg.candidates = Array.isArray(msg.candidates) ? msg.candidates : [];
       cfg.hasSearched = true;
-      cfg.lastRun = { backend: msg.backend || state.perchBackend || 'local', windows: msg.windows || cfg.candidates.length, contexts: msg.contexts || 1, elapsedMs: msg.elapsedMs || 0 };
+      cfg.lastRun = { backend: msg.backend || state.perchBackend || 'local', windows: msg.windows || cfg.candidates.length, contexts: msg.contexts || 1, elapsedMs: msg.elapsedMs || 0, mode: msg.mode || cfg.signalMode, bandFminHz: msg.bandFminHz, bandFmaxHz: msg.bandFmaxHz };
       tpl.perchMatches = buildPerchMatchesFromCandidates(tpl);
     }
     state.currentPerchTemplateId = null;
@@ -888,8 +1223,8 @@ function onPerchWorkerMessage(ev) {
     updatePerchSummary(tpl || getActiveTemplate());
     drawOverlay();
     const n = tpl ? (tpl.perchMatches || []).length : 0;
-    setStatus('Revisa resultados', n ? 'Perch2 encontró candidatos similares.' : 'Ajusta el score o la banda si no aparecen coincidencias.');
-    showToast('Perch2 terminado', n ? `${n} coincidencia${n===1?'':'s'} después de score e IoU.` : 'Sin coincidencias con los filtros actuales.');
+    setStatus('Revisa resultados', n ? 'Perch2 encontró candidatos similares.' : 'Ajusta el score o el modo de señal si no aparecen coincidencias.');
+    showToast('Perch2 terminado', n ? `${n} coincidencia${n===1?'':'s'} después de score y perfil temporal.` : 'Sin coincidencias con los filtros actuales.');
     openResultsStep('perch');
     return;
   }
@@ -1695,9 +2030,8 @@ function addCurrentSampleToActiveTemplate({ silent = false } = {}) {
   if (support) {
     tpl.tmin = support.tmin; tpl.tmax = support.tmax; tpl.fmin = support.fmin; tpl.fmax = support.fmax;
   }
-  tpl.matches = [];
+  invalidateClassicResults(tpl);
   invalidatePerchResults(tpl);
-  tpl.hasSearched = false;
   tpl.autoAdjust = true;
   tpl.autoAdjustMode = 'balanceado';
   tpl.showMatches = true;
@@ -1726,9 +2060,8 @@ function removeLastSampleFromActiveTemplate() {
   } else {
     tpl.tmin = tpl.tmax = tpl.fmin = tpl.fmax = 0;
   }
-  tpl.matches = [];
+  invalidateClassicResults(tpl);
   invalidatePerchResults(tpl);
-  tpl.hasSearched = false;
   tpl.autoAdjust = true;
   tpl.autoAdjustMode = 'balanceado';
   updateSamplePanelState(tpl);
@@ -1811,6 +2144,8 @@ function createDraftTemplate() {
     samples: [],
     previewCache: new Map(),
     matches: [],
+    classicCandidates: [],
+    classicPoolMeta: null,
     perchMatches: [],
     perch2: null,
     hasSearched: false,
@@ -1834,6 +2169,8 @@ function syncActiveTemplateParamsFromUi() {
   const tpl = getActiveTemplate();
   if (!tpl) return;
 
+  const prevMetric = tpl.metric;
+  const prevStride = Number(tpl.strideSec);
   tpl.metric = el.metricSelect.value;
   tpl.scoreThreshold = Number(el.scoreThreshold.value);
   tpl.strideSec = Number(el.strideSec.value);
@@ -1844,6 +2181,7 @@ function syncActiveTemplateParamsFromUi() {
   tpl.sampleEstimator = el.sampleEstimator?.value || tpl.sampleEstimator || 'consensus_ncc';
   tpl.expertParams = expertParamsFromUi();
   if (!Array.isArray(tpl.samples)) tpl.samples = [];
+  if (tpl.hasSearched && (prevMetric !== tpl.metric || Math.abs(prevStride - tpl.strideSec) > 1e-9)) invalidateClassicResults(tpl);
   updateSamplePanelState(tpl);
 
   // Mantener sincronía bidireccional de etiquetas:
@@ -2100,7 +2438,7 @@ function updateSearchSummaryText() {
   if (!isTemplateValid(tpl)) {
     el.matchSummary.textContent = `${label}: sin caja válida. Dibuja una plantilla antes de buscar.`;
   } else if (total) {
-    el.matchSummary.textContent = `${label}: ${total} coincidencias encontradas. Mejor score: ${best.toFixed(3)}.${autoNote}`;
+    el.matchSummary.textContent = `${label}: ${total} coincidencias encontradas. Mejor score: ${best.toFixed(3)}.${autoNote}${Array.isArray(tpl.classicCandidates)&&tpl.classicCandidates.length ? ' Score mínimo interactivo disponible.' : ''}`;
   } else if (tpl.hasSearched) {
     el.matchSummary.textContent = `${label}: sin coincidencias.${autoNote}`;
   } else {
@@ -2136,7 +2474,7 @@ function ensureWorker() {
   if (state.worker) {
     state.worker.terminate();
   }
-  state.worker = new Worker('src/audio-worker.js?v=46');
+  state.worker = new Worker('src/audio-worker.js?v=48.2');
   state.worker.onmessage = onWorkerMessage;
   state.worker.onerror = (err) => {
     hideProcessing();
@@ -2208,6 +2546,8 @@ function onWorkerMessage(ev) {
     }
     if (tpl) {
       const etiqueta = displayLabelForTemplate(tpl);
+      tpl.classicCandidates = Array.isArray(msg.candidatePool) ? msg.candidatePool.map(m => ({...m})) : (msg.matches || []).map(m => ({...m}));
+      tpl.classicPoolMeta = msg.poolMeta || null;
       tpl.matches = (msg.matches || []).map(m => ({ ...addEtiquetaToMatch(m, etiqueta), templateId: tpl.id, templateLabel: etiqueta, color: tpl.color, methodKey: 'classic', method: 'Búsqueda clásica' }));
       tpl.hasSearched = true;
       tpl.showMatches = tpl.showMatches !== false;
@@ -2491,7 +2831,7 @@ function initializeVisualEngine(){
   if(visualState.autoHeight) syncAutoVisualHeight(true);
   const fit=visualFitPxPerSec(),max=visualMaxPxPerSec(); visualState.pxPerSec=Math.max(fit,Math.min(visualState.pxPerSec,max));
   syncVisualZoomUi(); layoutSpectrogramStage(true); drawAxes(); drawOverlay();
-  visualState.worker=new Worker('src/visual-worker.js?v=46');
+  visualState.worker=new Worker('src/visual-worker.js?v=48.2');
   visualState.worker.onmessage=handleVisualWorkerMessage;
   visualState.worker.onerror=(err)=>{console.error(err);visualState.activeRequestKey=null;hideProcessing();showToast('Error del visor',err.message||'Falló el motor visual.',7000);};
   const copy=state.samples ? state.samples.slice() : new Float32Array();
@@ -3028,7 +3368,8 @@ function drawMatches(ctx) {
   const matches = state.matches || [];
   for (const m of matches.slice(0, CONFIG.maxMatchesToDraw)) {
     const tpl = state.templates.find(t => t.id === m.templateId); if (tpl && tpl.showMatches === false) continue;
-    const color=m.color||tpl?.color||'#06b6d4',x1=timeToX(m.tmin),x2=timeToX(m.tmax),y1=freqToY(m.fmax),y2=freqToY(m.fmin);
+    const color=m.color||tpl?.color||'#06b6d4',x1=timeToX(m.tmin),x2=timeToX(m.tmax);
+    const y1=m.frequencyLocalized===false?0:freqToY(m.fmax),y2=m.frequencyLocalized===false?state.display.height:freqToY(m.fmin);
     const rx=Math.min(x1,x2),ry=Math.min(y1,y2),rw=Math.abs(x2-x1),rh=Math.abs(y2-y1);
     ctx.save();ctx.lineWidth=1.6;ctx.strokeStyle=color;ctx.fillStyle=hexToRgba(color,.055);ctx.fillRect(rx,ry,rw,rh);ctx.strokeRect(rx,ry,rw,rh);ctx.restore();
     drawAnnotationLabel(ctx,rx,ry,[displayLabelForTemplate(tpl||{})||m.etiqueta||'coincidencia',`${m.method || (m.methodKey === 'perch2' ? 'Perch2' : 'Búsqueda')} · score: ${Number(m.score).toFixed(2)}`],color);
@@ -3294,7 +3635,7 @@ function renderMatchesTable() {
     const labelText = escapeHtml(m.etiqueta || m.templateLabel || '');
     const methodText = m.method || (m.methodKey === 'perch2' ? 'Perch2' : 'Búsqueda clásica');
     const methodClass = m.methodKey === 'perch2' ? 'perch' : 'classic';
-    tr.innerHTML = `<td>${m._rank}</td><td class="label-pill-cell"><span class="label-pill editable-label" contenteditable="true" data-template-id="${escapeHtml(m.templateId || '')}" style="--tpl-color:${m.color || '#00e5ff'}">${labelText}</span></td><td><span class="method-badge ${methodClass}">${escapeHtml(methodText)}</span></td><td>${m.score.toFixed(3)}</td><td>${m.tmin.toFixed(2)}</td><td>${m.tmax.toFixed(2)}</td><td>${(m.fmin/1000).toFixed(2)}</td><td>${(m.fmax/1000).toFixed(2)}</td>`;
+    tr.innerHTML = `<td>${m._rank}</td><td class="label-pill-cell"><span class="label-pill editable-label" contenteditable="true" data-template-id="${escapeHtml(m.templateId || '')}" style="--tpl-color:${m.color || '#00e5ff'}">${labelText}</span></td><td><span class="method-badge ${methodClass}">${escapeHtml(methodText)}</span></td><td>${m.score.toFixed(3)}</td><td>${m.tmin.toFixed(2)}</td><td>${m.tmax.toFixed(2)}</td><td>${m.frequencyLocalized === false ? '—' : (m.fmin/1000).toFixed(3)}</td><td>${m.frequencyLocalized === false ? '—' : (m.fmax/1000).toFixed(3)}</td>`;
     tr.addEventListener('click', (ev) => {
       if (ev.target && ev.target.classList.contains('editable-label')) return;
       el.audioPlayer.currentTime = m.tmin;
@@ -3357,8 +3698,8 @@ function exportCsv() {
     m.method || (m.methodKey === 'perch2' ? 'Perch2' : 'Búsqueda clásica'),
     m.tmin.toFixed(6),
     m.tmax.toFixed(6),
-    m.fmin.toFixed(3),
-    m.fmax.toFixed(3),
+    m.frequencyLocalized === false ? '' : m.fmin.toFixed(3),
+    m.frequencyLocalized === false ? '' : m.fmax.toFixed(3),
     cleanLabel(m.etiqueta || m.templateLabel || ''),
     m.score.toFixed(6),
     'candidato'
@@ -3378,8 +3719,8 @@ function exportXlsx() {
     m.method || (m.methodKey === 'perch2' ? 'Perch2' : 'Búsqueda clásica'),
     Number(m.tmin.toFixed(6)),
     Number(m.tmax.toFixed(6)),
-    Number(m.fmin.toFixed(3)),
-    Number(m.fmax.toFixed(3)),
+    m.frequencyLocalized === false ? '' : Number(m.fmin.toFixed(3)),
+    m.frequencyLocalized === false ? '' : Number(m.fmax.toFixed(3)),
     cleanLabel(m.etiqueta || m.templateLabel || ''),
     Number(m.score.toFixed(6)),
     'candidato'
@@ -3396,7 +3737,7 @@ function exportAudacityTxt() {
   for (const m of ordered) {
     const etiqueta = cleanLabel(m.etiqueta || m.templateLabel || '');
     lines.push(`${m.tmin.toFixed(6)}\t${m.tmax.toFixed(6)}\t${etiqueta}`);
-    lines.push(`\\\t${m.fmin.toFixed(6)}\t${m.fmax.toFixed(6)}`);
+    if (m.frequencyLocalized !== false) lines.push(`\\\t${m.fmin.toFixed(6)}\t${m.fmax.toFixed(6)}`);
   }
   const txt = lines.join('\r\n') + '\r\n';
   const blob = new Blob([txt], { type: 'text/plain;charset=utf-8' });
@@ -3611,9 +3952,8 @@ function saveCurrentTemplate({ silent = false } = {}) {
   tpl.fmin = nextGeometry.fmin;
   tpl.fmax = nextGeometry.fmax;
   if (isNew || roiChanged || wasDraft) {
-    tpl.matches = [];
+    invalidateClassicResults(tpl);
     invalidatePerchResults(tpl);
-    tpl.hasSearched = false;
     tpl.autoAdjust = true;
   tpl.autoAdjustMode = 'balanceado';
     tpl.showMatches = true;
@@ -3704,7 +4044,7 @@ function searchPendingTemplatesFromTemplatePanel() {
 function clearRoi() {
   const tpl = getActiveTemplate();
   if (tpl) {
-    tpl.matches = [];
+    invalidateClassicResults(tpl);
     invalidatePerchResults(tpl);
     tpl.tmin = 0;
     tpl.tmax = 0;
@@ -3822,9 +4162,7 @@ function postSearchStatus(text) {
 function clearMatches() {
   const tpl = getActiveTemplate();
   if (!tpl) return;
-  tpl.matches = [];
-  tpl.hasSearched = false;
-  tpl.lastAuto = null;
+  invalidateClassicResults(tpl);
   refreshCombinedMatches();
   updateSearchSummaryText();
   drawOverlay();
@@ -4247,6 +4585,9 @@ function attachEvents() {
   [el.metricSelect, el.scoreThreshold, el.scoreThresholdInput, el.strideSec, el.strideSecInput, el.roiLabel].forEach(node => {
     if (node) node.addEventListener('change', syncActiveTemplateParamsFromUi);
   });
+  [el.metricSelect, el.strideSec, el.strideSecInput].forEach(node => {
+    if (node) node.addEventListener('change', () => { refreshCombinedMatches(); updateSearchSummaryText(); drawOverlay(); updateSearchButtonsState(); });
+  });
   if (el.roiLabel) {
     el.roiLabel.addEventListener('input', () => {
       syncActiveTemplateParamsFromUi();
@@ -4271,9 +4612,8 @@ function attachEvents() {
       if (!Array.isArray(tpl.samples)) tpl.samples = [];
       tpl.sampleEstimator = el.sampleEstimator?.value || tpl.sampleEstimator || 'consensus_ncc';
       clearTemplateCompositeCache(tpl);
-      tpl.matches = [];
+      invalidateClassicResults(tpl);
       invalidatePerchResults(tpl);
-      tpl.hasSearched = false;
       tpl.autoAdjust = true;
   tpl.autoAdjustMode = 'balanceado';
     }
@@ -4298,29 +4638,31 @@ function attachEvents() {
         // Los resultados existentes pertenecen al método anterior; marcamos
         // la plantilla como pendiente para que el usuario recalcule si desea,
         // pero conservamos la caché visual de todos los métodos ya calculados.
-        tpl.matches = [];
-        tpl.hasSearched = false;
+        invalidateClassicResults(tpl);
         tpl.autoAdjust = true;
   tpl.autoAdjustMode = 'balanceado';
       }
     }
     updateSamplePanelState(tpl);
     updateSearchButtonsState();
+    refreshCombinedMatches();
+    updateSearchSummaryText();
+    drawOverlay();
   });
   if (el.btnAddSample) el.btnAddSample.addEventListener('click', () => addCurrentSampleToActiveTemplate({ silent: false }));
   if (el.btnRemoveSample) el.btnRemoveSample.addEventListener('click', removeLastSampleFromActiveTemplate);
 
   if (el.perchSignalSegments) {
     el.perchSignalSegments.querySelectorAll('[data-perch-mode]').forEach(btn => btn.addEventListener('click', () => {
-      const mode = btn.dataset.perchMode || 'full';
+      const mode = btn.dataset.perchMode || 'auto';
       setPerchModeButtons(mode);
       syncActiveTemplatePerchParamsFromUi({ invalidateExpensive: true });
     }));
   }
   if (el.perchStride && el.perchStrideInput) {
-    el.perchStride.addEventListener('input', () => { el.perchStrideInput.value = Number(el.perchStride.value).toFixed(2); updatePerchWindowEstimate(); });
+    el.perchStride.addEventListener('input', () => { el.perchStrideInput.value = Number(el.perchStride.value).toFixed(2); updatePerchWindowEstimate(); updatePerchTemporalResolutionUi(); });
     el.perchStride.addEventListener('change', () => syncActiveTemplatePerchParamsFromUi({ invalidateExpensive: true }));
-    el.perchStrideInput.addEventListener('input', () => { const v=clamp(Number(el.perchStrideInput.value)||0.5,0.25,2); el.perchStride.value=String(v); updatePerchWindowEstimate(); });
+    el.perchStrideInput.addEventListener('input', () => { const v=clamp(Number(el.perchStrideInput.value)||0.5,0.25,2); el.perchStride.value=String(v); updatePerchWindowEstimate(); updatePerchTemporalResolutionUi(); });
     el.perchStrideInput.addEventListener('change', () => syncActiveTemplatePerchParamsFromUi({ invalidateExpensive: true }));
   }
   if (el.perchFminRange) {
@@ -4337,11 +4679,15 @@ function attachEvents() {
     el.perchScore.addEventListener('input', () => { el.perchScoreInput.value = Number(el.perchScore.value).toFixed(2); syncActiveTemplatePerchParamsFromUi({ refreshFilters: true }); });
     el.perchScoreInput.addEventListener('input', () => { const v=clamp(Number(el.perchScoreInput.value)||0,-1,1); el.perchScore.value=String(v); syncActiveTemplatePerchParamsFromUi({ refreshFilters: true }); });
   }
-  if (el.perchIou && el.perchIouInput) {
-    el.perchIou.addEventListener('input', () => { el.perchIouInput.value = Number(el.perchIou.value).toFixed(2); syncActiveTemplatePerchParamsFromUi({ refreshFilters: true }); });
-    el.perchIouInput.addEventListener('input', () => { const v=clamp(Number(el.perchIouInput.value)||0,0,1); el.perchIou.value=String(v); syncActiveTemplatePerchParamsFromUi({ refreshFilters: true }); });
-  }
   if (el.perchExcludeTemplate) el.perchExcludeTemplate.addEventListener('change', () => syncActiveTemplatePerchParamsFromUi({ refreshFilters: true }));
+  if (el.perchTemporalRefine) el.perchTemporalRefine.addEventListener('change', () => syncActiveTemplatePerchParamsFromUi({ refreshFilters: true }));
+  if (el.perchEdgeAdjustment) el.perchEdgeAdjustment.addEventListener('input', () => { updatePerchProfileControlLabels(); syncActiveTemplatePerchParamsFromUi({ refreshFilters: true }); });
+  if (el.perchPeakSeparation) el.perchPeakSeparation.addEventListener('input', () => { updatePerchProfileControlLabels(); syncActiveTemplatePerchParamsFromUi({ refreshFilters: true }); });
+  if (el.perchPadding && el.perchPaddingInput) {
+    el.perchPadding.addEventListener('input', () => { el.perchPaddingInput.value=Number(el.perchPadding.value).toFixed(2); syncActiveTemplatePerchParamsFromUi({ refreshFilters: true }); });
+    el.perchPaddingInput.addEventListener('input', () => { const v=clamp(Number(el.perchPaddingInput.value)||0,0,1); el.perchPadding.value=String(v); syncActiveTemplatePerchParamsFromUi({ refreshFilters: true }); });
+  }
+
   if (el.btnSearchPerch) el.btnSearchPerch.addEventListener('click', startPerchSearch);
   if (el.btnCancelPerch) el.btnCancelPerch.addEventListener('click', cancelPerchSearch);
 
@@ -4371,6 +4717,19 @@ function attachEvents() {
   });
 
   syncRangeNumber(el.scoreThreshold, el.scoreThresholdInput, 3, 0, 0.99);
+  const refreshClassicScoreFromUi = () => {
+    const tpl=getActiveTemplate();
+    if (!tpl) return;
+    tpl.scoreThreshold=clamp(Number(el.scoreThreshold.value||0),0,0.99);
+    if (tpl.hasSearched && Array.isArray(tpl.classicCandidates) && tpl.classicCandidates.length) refreshClassicMatchesFromCache(tpl);
+  };
+  if (el.scoreThreshold) el.scoreThreshold.addEventListener('input', refreshClassicScoreFromUi);
+  if (el.scoreThresholdInput) el.scoreThresholdInput.addEventListener('input', () => {
+    const v=clamp(Number(el.scoreThresholdInput.value)||0,0,0.99);
+    el.scoreThreshold.value=String(v);
+    refreshClassicScoreFromUi();
+  });
+
   syncRangeNumber(el.strideSec, el.strideSecInput, 2, 0.01, 1.00);
   if (el.expertMinMatches && el.expertMinMatchesInput) syncRangeNumber(el.expertMinMatches, el.expertMinMatchesInput, 0, 1, 20);
   if (el.expertMaxMatches && el.expertMaxMatchesInput) syncRangeNumber(el.expertMaxMatches, el.expertMaxMatchesInput, 0, 5, 200);

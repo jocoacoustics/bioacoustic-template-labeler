@@ -3,8 +3,8 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Etiquetador bioacústico por plantillas v46</title>
-  <link rel="stylesheet" href="styles.css?v=46" />
+  <title>Etiquetador bioacústico por plantillas v48.2</title>
+  <link rel="stylesheet" href="styles.css?v=48.2" />
 </head>
 <body>
   <div id="appShell" class="app-shell">
@@ -12,7 +12,7 @@
       <div class="brand">
         <img class="brand-logo" src="https://jocotoco.org.ec/dct/tmp_adjuntos/noEn/000/073/MatrizDatos_1757014841Logo-jocotoco2025.svg" alt="Logo Jocotoco" />
         <div>
-          <h1>Etiquetador bioacústico por plantillas <span class="version-tag">v46</span></h1>
+          <h1>Etiquetador bioacústico por plantillas <span class="version-tag">v48.2</span></h1>
           <p class="brand-subtitle">Plantillas acústicas + búsqueda clásica/Perch2 + visor multirresolución</p>
         </div>
       </div>
@@ -223,7 +223,7 @@
                 <div class="template-subtitle">Definición de la plantilla</div>
                 <label class="template-label-field">Etiqueta<input id="roiLabel" class="roi-label-input" type="text" placeholder="Ej. especie, código o clase" /></label>
                 <div class="template-roi-grid">
-                  <label>tmin (s)<input id="roiTmin" type="number" step="0.001" value="0" /></label><label>tmax (s)<input id="roiTmax" type="number" step="0.001" value="0" /></label><label>fmin (kHz)<input id="roiFmin" type="number" step="0.001" value="0" /></label><label>fmax (kHz)<input id="roiFmax" type="number" step="0.001" value="0" /></label>
+                  <label>tmin (s)<input id="roiTmin" type="number" step="0.001" value="0" /></label><label>tmax (s)<input id="roiTmax" type="number" step="0.001" value="0" /></label><label>Frecuencia mínima (kHz)<input id="roiFmin" type="number" step="0.001" value="0.000" /></label><label>Frecuencia máxima (kHz)<input id="roiFmax" type="number" step="0.001" value="0.000" /></label>
                 </div>
                 <label class="checkline compound-check template-multi-check"><input id="useMultiSamples" type="checkbox" /><span>Usar varias muestras</span><button type="button" class="info-dot" data-tip="Permite combinar varias muestras del mismo fonotipo. La app alinea las muestras y construye una plantilla compuesta robusta.">i</button></label>
               </div>
@@ -265,8 +265,8 @@
             <label class="control-label search-full-field"><span class="label-row">Método de comparación <button type="button" class="info-dot" data-tip="Define cómo se compara la plantilla con cada ventana candidata.">i</button></span><select id="metricSelect"><option value="coseno" selected>coseno</option><option value="correlacion">correlación normalizada</option><option value="euclidiana">euclidiana normalizada</option><option value="correlacion_cruzada">correlación cruzada</option><option value="correlacion_cruzada_2d">correlación cruzada 2D</option><option value="correlacion_2d_multiescala">correlación 2D multi-escala</option></select></label>
             <div class="auto-adjust-block"><div class="label-row">Autoajuste <button type="button" class="info-dot" data-tip="Ninguno usa tus valores manuales. Balanceado es el recomendado para la primera búsqueda.">i</button></div><select id="autoAdjustMode" class="native-select-hidden"><option value="none">Ninguno</option><option value="conservador">Conservador</option><option value="balanceado" selected>Balanceado</option><option value="sensible">Sensible</option></select><div id="autoAdjustSegments" class="auto-adjust-segments" role="radiogroup" aria-label="Autoajuste"><button type="button" data-auto-mode="none">Ninguno</button><button type="button" data-auto-mode="conservador">Conservador</button><button type="button" data-auto-mode="balanceado" class="active">Balanceado</button><button type="button" data-auto-mode="sensible">Sensible</button></div></div>
             <div class="search-control-grid">
-              <div class="search-cell"><label class="control-label"><span class="label-row">Score mínimo <button type="button" class="info-dot" data-tip="Umbral de similitud entre 0 y 1.">i</button></span><div class="slider-number-row"><input id="scoreThreshold" type="range" min="0" max="0.99" step="0.001" value="0.85" /><input id="scoreThresholdInput" class="number-compact" type="number" min="0" max="0.99" step="0.001" value="0.85" /></div></label></div>
-              <div class="search-cell"><label class="control-label"><span class="label-row">Separación entre ventanas <button type="button" class="info-dot" data-tip="Cada cuántos segundos se prueba una nueva ventana.">i</button></span><div class="slider-number-row"><input id="strideSec" type="range" min="0.01" max="1.00" step="0.01" value="0.10" /><input id="strideSecInput" class="number-compact" type="number" min="0.01" max="1.00" step="0.01" value="0.10" /></div></label></div>
+              <div class="search-cell"><label class="control-label"><span class="label-row">Score mínimo <button type="button" class="info-dot" data-tip="Umbral de similitud entre 0 y 1. Después de buscar, moverlo refiltra candidatos ya calculados sin ejecutar nuevamente el motor.">i</button></span><div class="slider-number-row"><input id="scoreThreshold" type="range" min="0" max="0.99" step="0.001" value="0.85" /><input id="scoreThresholdInput" class="number-compact" type="number" min="0" max="0.99" step="0.001" value="0.85" /></div></label></div>
+              <div class="search-cell"><label class="control-label"><span class="label-row">Separación entre ventanas <button type="button" class="info-dot" data-tip="Cada cuántos segundos se prueba una nueva ventana. Cambiar este valor altera el barrido y requiere una nueva búsqueda.">i</button></span><div class="slider-number-row"><input id="strideSec" type="range" min="0.01" max="1.00" step="0.01" value="0.10" /><input id="strideSecInput" class="number-compact" type="number" min="0.01" max="1.00" step="0.01" value="0.10" /></div></label></div>
             </div>
             <div class="check-grid-row"><label class="checkline auto-adjust-row compact-check"><input id="expertMode" type="checkbox" />Modo experto<button type="button" class="info-dot" data-tip="Muestra parámetros técnicos del autoajuste.">i</button></label><label class="checkline auto-adjust-row compact-check"><input id="showActiveMatches" type="checkbox" checked />Ver cajas<button type="button" class="info-dot" data-tip="Muestra u oculta las cajas inferidas de la plantilla activa.">i</button></label></div>
             <div id="expertPanel" class="expert-panel is-hidden"><div class="expert-panel-title"><span class="ui-icon"><svg viewBox="0 0 24 24"><path d="M4 7h10M18 7h2M4 17h2M10 17h10M14 4v6M7 14v6"/></svg></span>Opciones expertas</div><label class="control-label compact-control">Mínimo objetivo<div class="slider-number-row"><input id="expertMinMatches" type="range" min="1" max="20" step="1" value="3" /><input id="expertMinMatchesInput" class="number-compact" type="number" min="1" max="20" step="1" value="3" /></div></label><label class="control-label compact-control">Máximo automático<div class="slider-number-row"><input id="expertMaxMatches" type="range" min="5" max="200" step="1" value="30" /><input id="expertMaxMatchesInput" class="number-compact" type="number" min="5" max="200" step="1" value="30" /></div></label><label class="control-label compact-control">Prominencia mínima<div class="slider-number-row"><input id="expertProminence" type="range" min="0" max="0.40" step="0.005" value="0.035" /><input id="expertProminenceInput" class="number-compact" type="number" min="0" max="0.40" step="0.005" value="0.035" /></div></label><label class="control-label compact-control">Agrupamiento temporal<div class="slider-number-row"><input id="expertGroupFactor" type="range" min="0.40" max="2.00" step="0.05" value="1.00" /><input id="expertGroupFactorInput" class="number-compact" type="number" min="0.40" max="2.00" step="0.05" value="1.00" /></div></label></div>
@@ -300,12 +300,13 @@
             <div class="perch-two-col">
               <div class="perch-control-card">
                 <div class="perch-card-title"><span class="perch-mini-icon"><svg viewBox="0 0 24 24"><path d="M3 12h2l1.5-5 2 10 2-13 2 16 2-11 2 7 1.5-4H21"/></svg></span>Señal para Perch2</div>
-                <input id="perchSignalMode" type="hidden" value="full" />
+                <input id="perchSignalMode" type="hidden" value="auto" />
                 <div id="perchSignalSegments" class="perch-segments" role="radiogroup" aria-label="Señal para Perch2">
-                  <button type="button" class="active" data-perch-mode="full">Audio completo</button>
+                  <button type="button" class="active" data-perch-mode="auto">Automático</button>
+                  <button type="button" data-perch-mode="full">Audio completo</button>
                   <button type="button" data-perch-mode="band">Banda de frecuencias</button>
-                  <button type="button" data-perch-mode="compare">Comparar</button>
                 </div>
+                <p id="perchSignalHelp" class="perch-help perch-mode-help">Automático usa exclusivamente el rango de frecuencias de la muestra usada por Perch2.</p>
                 <div id="perchBandPanel" class="perch-band-panel is-hidden">
                   <div class="perch-advanced-head"><span>Configuración avanzada · Banda de frecuencias</span><span aria-hidden="true">⌄</span></div>
                   <div class="perch-range-label-row"><strong>Rango de frecuencias</strong><span id="perchBandRangeText">—</span></div>
@@ -314,10 +315,10 @@
                     <input id="perchFminRange" class="perch-range perch-range-min" type="range" min="0" max="1000" step="1" value="0" aria-label="Frecuencia mínima" />
                     <input id="perchFmaxRange" class="perch-range perch-range-max" type="range" min="0" max="1000" step="1" value="1000" aria-label="Frecuencia máxima" />
                   </div>
-                  <div class="perch-range-extremes"><span id="perchRangeMinLabel">0.00 kHz</span><span class="perch-mel-note">escala Mel</span><span id="perchRangeMaxLabel">— kHz</span></div>
+                  <div class="perch-range-extremes"><span id="perchRangeMinLabel">0.000 kHz</span><span class="perch-mel-note">escala Mel</span><span id="perchRangeMaxLabel">— kHz</span></div>
                   <div class="perch-band-inputs">
-                    <label>fmin <span><input id="perchFminInput" type="number" min="0" step="0.01" value="0" /> kHz</span></label>
-                    <label>fmax <span><input id="perchFmaxInput" type="number" min="0" step="0.01" value="8" /> kHz</span></label>
+                    <label>Frecuencia mínima <span><input id="perchFminInput" type="number" min="0" step="0.001" value="0.000" /> kHz</span></label>
+                    <label>Frecuencia máxima <span><input id="perchFmaxInput" type="number" min="0" step="0.001" value="8.000" /> kHz</span></label>
                   </div>
                   <p class="perch-help">Opcional: filtra la señal antes de calcular el embedding. La barra usa escala Mel para dar más precisión de ajuste en frecuencias bajas.</p>
                 </div>
@@ -333,8 +334,17 @@
             <div class="perch-control-card perch-match-card">
               <div class="perch-card-title"><span class="perch-mini-icon"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="7"/><circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3"/></svg></span>Coincidencia <span id="perchLocalBadge" class="perch-local-badge">LOCAL</span></div>
               <label class="control-label"><span class="label-row">Similitud coseno <button type="button" class="info-dot" data-tip="Coseno real entre embeddings Perch2, de −1 a 1. Cambiarlo después de buscar no recalcula embeddings.">i</button></span><div class="slider-number-row"><input id="perchScore" type="range" min="-1" max="1" step="0.01" value="0.70" /><input id="perchScoreInput" class="number-compact" type="number" min="-1" max="1" step="0.01" value="0.70" /></div></label>
-              <label class="control-label"><span class="label-row">Solape máximo (IoU) <button type="button" class="info-dot" data-tip="NMS temporal: se conserva primero la ventana de mayor score y se suprimen ventanas con IoU superior a este valor.">i</button></span><div class="slider-number-row"><input id="perchIou" type="range" min="0" max="1" step="0.05" value="0.30" /><input id="perchIouInput" class="number-compact" type="number" min="0" max="1" step="0.05" value="0.30" /></div></label>
               <label class="checkline perch-exclude"><input id="perchExcludeTemplate" type="checkbox" checked />Excluir ventanas que solapen la plantilla</label>
+              <div class="perch-refine-block">
+                <div class="perch-refine-head"><label class="checkline"><input id="perchTemporalRefine" type="checkbox" checked /><strong>Ajuste temporal por perfil de coseno</strong></label><div class="perch-refine-badges"><span id="perchResolutionText" class="perch-resolution-badge">Ancho mínimo: — · plantilla</span><span id="perchStrideResolutionText" class="perch-resolution-badge perch-resolution-secondary">Paso: 0.500 s</span></div></div>
+                <p class="perch-help perch-profile-help">El perfil temporal del coseno identifica picos y valles y usa el solapamiento de las ventanas de 5 s para estimar cajas más estrechas.</p>
+                <details class="perch-refine-advanced">
+                  <summary>Configuración avanzada · Perfil temporal</summary>
+                  <label class="control-label perch-semantic-control"><span class="label-row">Ajuste de bordes <button type="button" class="info-dot" data-tip="Controla el nivel relativo de prominencia usado para medir el ancho del pico. Más fino aprovecha una porción más amplia del perfil y produce cajas más estrechas. La caja nunca será más corta que la plantilla usada por Perch2.">i</button><span id="perchEdgeText" class="perch-inline-value">Equilibrado</span></span><input id="perchEdgeAdjustment" type="range" min="0" max="100" step="5" value="40" /><span class="perch-semantic-extremes"><span>Fino</span><span>Conservador</span></span></label>
+                  <label class="control-label perch-semantic-control"><span class="label-row">Separación entre huellas <button type="button" class="info-dot" data-tip="Decide cuán profundo debe ser el valle entre dos máximos del perfil para considerarlos huellas distintas. Hacia Separar, valles más pequeños dividen eventos.">i</button><span id="perchSeparationText" class="perch-inline-value">Equilibrada</span></span><input id="perchPeakSeparation" type="range" min="0" max="100" step="5" value="50" /><span class="perch-semantic-extremes"><span>Unir</span><span>Separar</span></span></label>
+                  <label class="control-label"><span class="label-row">Padding final (s) <button type="button" class="info-dot" data-tip="Expande por igual ambos lados de la caja ya estimada. No cambia embeddings ni el perfil de coseno.">i</button></span><div class="slider-number-row"><input id="perchPadding" type="range" min="0" max="1.00" step="0.05" value="0.00" /><input id="perchPaddingInput" class="number-compact" type="number" min="0" max="1.00" step="0.05" value="0.00" /></div></label>
+                </details>
+              </div>
             </div>
 
             <div id="perchProgressWrap" class="perch-progress-wrap">
@@ -353,7 +363,7 @@
           </button>
           <div class="accordion-content results-content">
             <div class="results-actions export-actions export-actions-top"><button id="btnExportCsv" class="btn btn-small" disabled><span class="ui-icon export-csv"><svg viewBox="0 0 24 24"><path d="M6 3h9l4 4v14H6zM15 3v5h5M9 13h6M9 17h6"/></svg></span>Exportar CSV</button><button id="btnExportXlsx" class="btn btn-small" disabled><span class="export-x-icon">X</span>Exportar XLSX</button><button id="btnExportTxt" class="btn btn-small" disabled><span class="ui-icon export-txt"><svg viewBox="0 0 24 24"><path d="M6 3h8l4 4v14H6z"/><path d="M14 3v5h5"/><path d="M8.5 12h7M8.5 15h7M8.5 18h5"/></svg></span>Exportar TXT Audacity</button></div>
-            <div class="table-wrap"><table id="matchesTable"><thead><tr><th class="sortable" data-sort="rank">#</th><th class="sortable" data-sort="etiqueta">etiqueta</th><th class="sortable" data-sort="method">método</th><th class="sortable" data-sort="score">score</th><th class="sortable" data-sort="tmin">tmin (s)</th><th class="sortable" data-sort="tmax">tmax (s)</th><th class="sortable" data-sort="fmin">fmin (kHz)</th><th class="sortable" data-sort="fmax">fmax (kHz)</th></tr></thead><tbody><tr><td colspan="8" class="muted-cell">Sin resultados</td></tr></tbody></table></div>
+            <div class="table-wrap"><table id="matchesTable"><thead><tr><th class="sortable" data-sort="rank">#</th><th class="sortable" data-sort="etiqueta">etiqueta</th><th class="sortable" data-sort="method">método</th><th class="sortable" data-sort="score">score</th><th class="sortable" data-sort="tmin">tmin (s)</th><th class="sortable" data-sort="tmax">tmax (s)</th><th class="sortable" data-sort="fmin">frec. mínima (kHz)</th><th class="sortable" data-sort="fmax">frec. máxima (kHz)</th></tr></thead><tbody><tr><td colspan="8" class="muted-cell">Sin resultados</td></tr></tbody></table></div>
             <div id="resultsFooterSummary" class="results-footer-summary"><span class="ui-icon"><svg viewBox="0 0 24 24"><path d="M8 6h12M8 12h12M8 18h12M4 6h.01M4 12h.01M4 18h.01"/></svg></span><strong>0 coincidencias</strong><span>· ordenado por score</span></div>
           </div>
         </section>
@@ -389,7 +399,7 @@
 
   <input id="fileInput" type="file" accept=".wav,.mp3,.flac,.ogg,.m4a,audio/*" hidden />
 
-  <script src="src/colormaps.js?v=46"></script>
-  <script src="src/app.js?v=46"></script>
+  <script src="src/colormaps.js?v=48.2"></script>
+  <script src="src/app.js?v=48.2"></script>
 </body>
 </html>

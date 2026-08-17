@@ -7,7 +7,7 @@ Un cambio **no se considera terminado** hasta cumplir la sección **Definition o
 ## 1. Identidad del proyecto
 
 - Proyecto: **Bioacoustic Template Labeler**.
-- Versión estable de referencia de este documento: **v46**.
+- Versión estable de referencia de este documento: **v48.2**.
 - Tipo: aplicación web estática/local.
 - Objetivo: seleccionar plantillas acústicas sobre espectrogramas, buscar patrones similares, revisar coincidencias y exportar resultados.
 - Filosofía: procesamiento local, arquitectura explícita, comportamiento reproducible y fundamento matemático documentado.
@@ -131,19 +131,30 @@ Estas reglas no deben romperse salvo decisión explícita del responsable del pr
 22. La inferencia Perch2 debe ejecutarse localmente en el navegador mediante `perch-worker.js`; no introducir un servidor CPU/GPU como requisito.
 23. La plantilla activa alimenta ambos motores, pero Perch2 usa una referencia simple: si la plantilla es multimuestra se usa **exclusivamente `samples[0]`**.
 24. La configuración Perch2 pertenece a cada plantilla y debe persistir independientemente al navegar entre plantillas.
-25. `Audio completo` es el modo Perch2 predeterminado. `Banda de frecuencias` es una configuración analítica opcional y manual; `Comparar` calcula ambos caminos.
+25. `Automático` es el modo Perch2 predeterminado y usa la banda frecuencial de la referencia usada por Perch2; `Audio completo` omite filtrado previo y `Banda de frecuencias` permite un rango manual.
 26. El control dual `fmin/fmax` usa coordenada Mel solo para mejorar la interacción. Antes del filtrado, sus posiciones deben convertirse de nuevo a Hz; no confundir esta escala UX con la escala visual del espectrograma.
-27. Cambiar plantilla, muestras, geometría, modo de señal, banda o paso temporal invalida candidatos Perch2. Cambiar score coseno, IoU o exclusión de plantilla solo refiltra candidatos existentes y **no debe recalcular embeddings**.
+27. Cambiar plantilla, muestras, geometría, modo de señal, banda manual o paso temporal invalida candidatos Perch2. Cambiar score coseno, ajuste de bordes, separación entre huellas, padding o exclusión de plantilla solo reconstruye/refiltra eventos existentes y **no debe recalcular embeddings**.
 28. Los resultados clásicos y Perch2 se conservan por separado dentro de la plantilla y se combinan únicamente para visualización/exportación en `Resultados`.
-29. El coseno Perch2 debe conservar su dominio matemático real `[-1,1]` y la supresión de redundancia temporal debe usar IoU/NMS.
+29. El coseno Perch2 debe conservar su dominio matemático real `[-1,1]`. El ajuste temporal debe aprovechar el perfil de coseno de las ventanas desplazadas; no eliminar ventanas antes de analizar picos, valles y ancho temporal.
 
-### 4.6 Responsive y UX
 
-30. La interfaz debe funcionar correctamente en escritorio al **100 % de zoom del navegador**.
-31. El panel derecho debe continuar siendo redimensionable y sus controles deben reorganizarse de forma responsive.
-32. Evitar scrolls globales redundantes; usar scroll únicamente donde tenga función real.
-33. Un cambio exclusivamente de estilo debe ser lo más localizado posible.
-34. No reescribir componentes estables si una corrección quirúrgica resuelve el problema.
+### 4.6 Convenciones de frecuencia y filtros posteriores
+
+30. Toda frecuencia visible expresada en **kHz** debe mostrarse con exactamente **tres decimales**.
+31. En interfaz usar **Frecuencia mínima** y **Frecuencia máxima**; reservar `fmin` y `fmax` para código, fórmulas y documentación técnica.
+32. Un parámetro posterior al cálculo no debe volver a ejecutar el motor si todos los datos necesarios ya están disponibles en caché. En particular, **Score mínimo** de la búsqueda clásica debe refiltrar el pool calculado cuando exista.
+33. En Perch2, una ventana de 5 s es una unidad de inferencia, no necesariamente una detección final. La secuencia de cosenos debe tratarse como un **perfil temporal**: máximos locales son huellas candidatas y la profundidad de los valles decide si se unen o separan.
+34. Para un pico con ventana del modelo de longitud `L` y soporte temporal del perfil de ancho `W`, el refinamiento usa el encajado de las ventanas extremas, equivalente a `D ≈ L − W`. La duración final nunca debe ser menor que el **ancho temporal de la plantilla usada realmente por Perch2** (plantilla simple o `samples[0]`). El Paso temporal `Δ` representa la resolución de muestreo/incertidumbre del perfil y **no** es un ancho mínimo. Si existe una sola ventana válida, no inventar un refinamiento más preciso: conservar 5 s, salvo que la plantilla sea más larga.
+35. `Audio completo` de Perch2 no implica localización frecuencial. La UX y exportación deben distinguir entre rango frecuencial localizado y no localizado.
+36. En modo `Automático`, el rango analítico debe derivarse en cada búsqueda de la ROI de referencia usada por Perch2 (plantilla simple o `samples[0]`); el panel manual de banda permanece oculto.
+
+### 4.7 Responsive y UX
+
+37. La interfaz debe funcionar correctamente en escritorio al **100 % de zoom del navegador**.
+38. El panel derecho debe continuar siendo redimensionable y sus controles deben reorganizarse de forma responsive.
+39. Evitar scrolls globales redundantes; usar scroll únicamente donde tenga función real.
+40. Un cambio exclusivamente de estilo debe ser lo más localizado posible.
+41. No reescribir componentes estables si una corrección quirúrgica resuelve el problema.
 
 ## 5. Política de cambios
 
@@ -325,6 +336,7 @@ Ejecutar lo que aplique al alcance. Para cambios de arquitectura o entregas gran
 ### Búsqueda
 
 - [ ] Ejecutar búsqueda.
+- [ ] Tras buscar, mover Score mínimo y confirmar redibujo inmediato sin nuevo cálculo del worker.
 - [ ] Cambiar método de comparación.
 - [ ] Autoajuste Ninguno/Conservador/Balanceado/Sensible.
 - [ ] Repetir búsqueda sin crear plantilla nueva.
@@ -332,13 +344,18 @@ Ejecutar lo que aplique al alcance. Para cambios de arquitectura o entregas gran
 
 ### Búsqueda Perch2
 
-- [ ] Confirmar `Audio completo` como modo predeterminado.
-- [ ] Activar `Banda de frecuencias` y comprobar que se despliega el panel `fmin/fmax`.
+- [ ] Confirmar `Automático` como modo predeterminado y verificar que toma la banda de la muestra usada por Perch2.
+- [ ] Confirmar que `Audio completo` no filtra y que `Banda de frecuencias` despliega el panel manual Frecuencia mínima/Frecuencia máxima.
 - [ ] Comprobar que la barra dual usa Mel para interacción y devuelve Hz correctos.
-- [ ] En multimuestra, comprobar que la referencia usada es la primera muestra (#1).
+- [ ] En multimuestra, comprobar que la referencia usada es la primera muestra (#1), también para el rango automático.
 - [ ] Ejecutar Perch2 con WebGPU cuando esté disponible y verificar fallback WASM.
 - [ ] Verificar progreso y cancelación.
-- [ ] Cambiar score e IoU después de buscar y confirmar que no se recalculan embeddings.
+- [ ] Cambiar score, Ajuste de bordes, Separación entre huellas y padding después de buscar y confirmar que no se recalculan embeddings.
+- [ ] Confirmar que un perfil con un pico ancho puede producir una caja estrecha y que una sola ventana conserva sus 5 s.
+- [ ] Confirmar que dos picos separados por un valle profundo se convierten en dos huellas y que el control Unir ↔ Separar modifica ese criterio sin recalcular embeddings.
+- [ ] Confirmar que la duración refinada nunca sea menor que el ancho temporal de la plantilla usada por Perch2.
+- [ ] Confirmar que cambiar el Paso temporal modifica la resolución del perfil, pero no impone el ancho mínimo de la caja.
+- [ ] Confirmar que el centro refinado coincide con el punto medio de los cruces del soporte, salvo recorte por límites reales del audio.
 - [ ] Confirmar que `Resultados` combina búsqueda clásica y Perch2 con columna método.
 - [ ] Cambiar de plantilla y volver: la configuración Perch2 debe conservarse por plantilla.
 

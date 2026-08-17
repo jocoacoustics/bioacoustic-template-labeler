@@ -2,6 +2,55 @@
 
 Historial canónico de versiones de **Bioacoustic Template Labeler**.
 
+## v48.2 — 2026-08-16
+
+### Changed
+- El ancho mínimo de una caja Perch2 refinada pasa a ser el **ancho temporal de la plantilla usada por Perch2**, no el Paso temporal.
+- El Paso temporal queda definido como resolución de muestreo/incertidumbre del perfil de coseno y ya no infla artificialmente la duración final.
+- El centro de cada evento refinado se fija en el punto medio de los cruces izquierdo/derecho del soporte del pico; la caja se conserva centrada salvo corrección por los límites reales del audio.
+- Si el perfil propone una duración menor que la plantilla, la caja se expande simétricamente alrededor del centro estimado hasta alcanzar el ancho de la plantilla.
+- Si solo existe una ventana válida, se conservan sus 5 s (o el ancho de plantilla si fuese mayor), ya que no existe evidencia de solapamiento para estrechar.
+
+### UX
+- El ajuste temporal informa por separado **Ancho mínimo: … · plantilla** y **Paso: … s**.
+
+### Documentation
+- README, documentación técnica y AGENTS actualizados con la nueva regla de duración mínima y centrado temporal.
+
+## v47.1 — 2026-08-16
+
+### Added
+- Modo **Automático** de Perch2, ahora predeterminado: usa directamente la banda frecuencial de la muestra de referencia sin requerir configuración manual.
+- Refinamiento temporal unificado mediante **perfil temporal del coseno**, con detección de picos, valles y encajado de ventanas.
+- Controles posteriores **Ajuste de bordes** (Fino ↔ Conservador) y **Separación entre huellas** (Unir ↔ Separar), ambos interactivos sin recalcular embeddings.
+
+### Changed
+- `Comparar` se retira de la UX principal de Perch2 y se sustituye por `Automático`.
+- El ajuste temporal deja de basarse en Evidencia conservada/Vecindad/IoU. El perfil de coseno decide la estructura temporal y el ancho de las cajas; padding permanece como ajuste final opcional.
+- Un pico sostenido en muchas ventanas de 5 s puede producir una caja estrecha mediante la relación $D\approx L-W$, limitada inferiormente por el paso temporal $\Delta$.
+- Una sola ventana válida conserva sus 5 s: no se inventa precisión temporal sin información de solapamiento.
+
+### Documentation
+- README, documentación técnica y AGENTS actualizados con Automático como modo predeterminado y con la matemática del perfil temporal de coseno.
+
+## v47 — 2026-08-16
+
+### Added
+- Refinamiento temporal Perch2 por rachas de ventanas, soporte temporal ponderado y núcleo de máximo soporte.
+- Control **Evidencia conservada** para obtener el intervalo más corto que explica una fracción configurable de la evidencia.
+- Configuración avanzada Perch2 de vecindad temporal, ponderación por similitud, padding e IoU final entre eventos.
+- Pool de candidatos de la búsqueda clásica para refiltrado interactivo por **Score mínimo** sin recalcular el análisis.
+
+### Changed
+- Las cajas Perch2 dejan de ser necesariamente ventanas fijas de 5 s; cuando existe evidencia solapada suficiente se refinan temporalmente, con duración mínima igual al paso del barrido.
+- IoU Perch2 se aplica únicamente sobre eventos finales; ya no elimina ventanas antes de construir el soporte temporal.
+- `Audio completo` en Perch2 no afirma localización frecuencial: las cajas abarcan visualmente el rango completo y Resultados muestra frecuencia como no localizada.
+- En UX se usan **Frecuencia mínima** y **Frecuencia máxima**; toda frecuencia visible en kHz se muestra con tres decimales.
+- Cambiar Score mínimo en la búsqueda clásica refiltra candidatos ya calculados; cambiar separación/stride o método sigue requiriendo nueva búsqueda.
+
+### Documentation
+- README, documentación técnica y AGENTS actualizados con las invariantes de formato de frecuencia, filtros posteriores sin recálculo y matemática de soporte temporal.
+
 ## v46 — 2026-08-16
 
 ### Added
