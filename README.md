@@ -90,7 +90,7 @@ bioacoustic-template-labeler-wizard-v48.2/
 
 ## Documentación y mantenimiento
 
-Abre `documentacion.html` para el manual completo, algoritmos y matemática.
+Abre [`documentacion.html`](https://jocoacoustics.github.io/bioacoustic-template-labeler/documentacion.html) para el manual completo, algoritmos y matemática.
 
 **Antes de modificar el proyecto, leer `AGENTS.md`.** El historial canónico se mantiene en `CHANGELOG.md`.
 
